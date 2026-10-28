@@ -44,7 +44,7 @@ Plans live in a small hosted service the app creates (**Settings → Create the 
 
 ## Users and roles
 
-Only people on the **warehouse user list** can open the app. The list is the `Users` table in the shipments service, managed on the **Users** tab (administrators only): add a person (optionally search ArcGIS Online to prefill name, email and username), change role, turn access off, or remove them. The app refuses to remove, demote or deactivate the **last active administrator**.
+Only people on the **warehouse user list** can open the app. The list is the `Users` table in the shipments service, managed on the **Users** tab (administrators only): add a person (search the **TEMA Warehouse LINC Admins** ArcGIS group, `MEMBER_GROUP_ID` in `config.js`, to prefill name, email and username; clear it to search the whole organization), change role, turn access off, or remove them. The app refuses to remove, demote or deactivate the **last active administrator**.
 
 | | Administrator | Staff | View only |
 |---|---|---|---|

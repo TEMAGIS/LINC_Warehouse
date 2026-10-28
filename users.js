@@ -9,8 +9,38 @@
 // ---------------------------------------------------------------------------
 import { $, esc, debounce, fmtDate } from "./shared/util.js";
 import { openModal, confirmDialog, toast } from "./shared/ui.js";
-import { applyEdits, queryAll, searchOrgMembers } from "./shared/esri-client.js";
+import { applyEdits, queryAll, searchOrgMembers, esriRequest } from "./shared/esri-client.js";
+import { CONFIG } from "./config.js";
 import { S } from "./state.js";
+
+let groupCache = null;
+/**
+ * People to offer in "Add person". With CONFIG.MEMBER_GROUP_ID set, only members of that ArcGIS
+ * group (owner, admins, users); otherwise anyone in the organization. Returns
+ * {people, restricted, error}. Group members are loaded once, then filtered by the typed text.
+ */
+export async function findPeople(text) {
+  const t = lc(text);
+  if (t.length < 2) return { people: [], restricted: !!CONFIG.MEMBER_GROUP_ID };
+  if (!CONFIG.MEMBER_GROUP_ID) return { people: await searchOrgMembers(text), restricted: false };
+  try {
+    if (!groupCache) {
+      const base = `${CONFIG.ARCGIS_PORTAL_URL}/sharing/rest/community`;
+      const g = await esriRequest(`${base}/groups/${CONFIG.MEMBER_GROUP_ID}/users`, {}, { method: "GET" });
+      const names = [...new Set([g.owner, ...(g.admins || []), ...(g.users || [])].filter(Boolean))];
+      groupCache = await Promise.all(names.map(async (username) => {
+        try {
+          const u = await esriRequest(`${base}/users/${encodeURIComponent(username)}`, {}, { method: "GET" });
+          return { username, fullName: u.fullName || username, email: u.email || (username.includes("@") ? username : "") };
+        } catch { return { username, fullName: username, email: username.includes("@") ? username : "" }; }
+      }));
+    }
+    return { people: groupCache.filter((p) => `${p.fullName} ${p.username} ${p.email}`.toLowerCase().includes(t)).slice(0, 8), restricted: true };
+  } catch (err) {
+    groupCache = null;
+    return { people: [], restricted: true, error: err.message };
+  }
+}
 
 export const ROLES = ["Administrator", "Staff", "View only"];
 export const ROLE_HELP = {
@@ -156,7 +186,7 @@ function renderRows() {
 function openUserDialog(row) {
   const editing = !!row;
   const body = `
-    ${editing ? "" : `<label>Find in ArcGIS Online <input id="us-find" placeholder="Type a name or username" autocomplete="off" /></label><div id="us-found" class="ip-results"></div>`}
+    ${editing ? "" : `<label>Find in ${CONFIG.MEMBER_GROUP_ID ? "the warehouse group" : "ArcGIS Online"} <input id="us-find" placeholder="Type a name or username" autocomplete="off" /></label><div id="us-found" class="ip-results"></div>`}
     <div class="two-col">
       <label>Name *<input id="us-name" value="${esc(row ? row.full_name : "")}" /></label>
       <label>Email *<input id="us-email" type="email" value="${esc(row ? row.email : "")}" ${editing ? "readonly" : ""} /></label>
@@ -176,8 +206,13 @@ function openUserDialog(row) {
   if (!editing) {
     const find = q("us-find");
     find.addEventListener("input", debounce(async () => {
-      const found = await searchOrgMembers(find.value);
-      q("us-found").innerHTML = found.length
+      const res = await findPeople(find.value);
+      const found = res.people;
+      q("us-found").innerHTML = res.error
+        ? `<div class="sub">Couldn't read the group: ${esc(res.error)}. Type the details below.</div>`
+        : !found.length && res.restricted && lc(find.value).length >= 2
+          ? `<div class="sub">No match in the warehouse group. Ask an ArcGIS administrator to add them to the group first, or type the details below.</div>`
+        : found.length
         ? found.map((f, i) => `<button type="button" class="ip-opt" data-i="${i}"><strong>${esc(f.fullName)}</strong> <span class="sub">${esc(f.username)}${f.email ? " · " + esc(f.email) : ""}</span></button>`).join("")
         : "";
       q("us-found")._found = found;

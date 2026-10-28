@@ -11,6 +11,8 @@
 export const CONFIG = {
   // --- ArcGIS OAuth (authorization-code + PKCE) ---
   ARCGIS_PORTAL_URL: "https://www.arcgis.com",
+  // "Add person" only offers members of this ArcGIS Online group (TEMA Warehouse LINC Admins). "" = whole organization.
+  MEMBER_GROUP_ID: "4eb3824968984354b2dc7bea2be31f5f",
   ARCGIS_APP_ID: "FnhvYkFpFjKff2RT",
   ARCGIS_REDIRECT_URI: "https://temagis.github.io/LINC_Warehouse/",
   ARCGIS_TOKEN_EXPIRATION_MINUTES: 20160,
