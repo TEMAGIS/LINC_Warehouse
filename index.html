@@ -1,1 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LINC Warehouse</title>
+  <link rel="icon" href="icons/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="theme-color" content="#002868" />
+  <link rel="stylesheet" href="shared/common.css" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body class="app-warehouse">
+  <div id="sign-in-screen" class="gate" hidden>
+    <div class="login-card">
+      <div class="login-brand">
+        <svg class="tn-badge" viewBox="0 0 100 100" role="img" aria-label="Tennessee state logo"><rect width="100" height="84" fill="#D22730"/><rect y="84" width="100" height="5" fill="#fff"/><rect y="89" width="100" height="11" fill="#002868"/><text x="50" y="70" text-anchor="middle" textLength="86" lengthAdjust="spacingAndGlyphs" font-family="Georgia,'Times New Roman',serif" font-weight="700" font-size="74" fill="#fff">TN</text></svg>
+        <div>
+          <div class="login-title">LINC Warehouse</div>
+          <div class="login-sub">Sign in with your ArcGIS Online account to receive, move and ship inventory.</div>
+        </div>
+      </div>
+      <div id="login-error" class="login-error" role="alert"></div>
+      <button id="sign-in-btn" class="login-btn" type="button">Sign in with ArcGIS Online</button>
+    </div>
+  </div>
 
+  <div id="not-provisioned-screen" class="gate" hidden>
+    <div class="login-card">
+      <div class="login-title">No access yet</div>
+      <p id="not-provisioned-message"></p>
+      <button id="np-signout-btn" type="button">Sign out</button>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar-brand">
+      <svg class="tn-badge tn-badge-sm" viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="84" fill="#D22730"/><rect y="84" width="100" height="5" fill="#fff"/><rect y="89" width="100" height="11" fill="#002868"/><text x="50" y="70" text-anchor="middle" textLength="86" lengthAdjust="spacingAndGlyphs" font-family="Georgia,'Times New Roman',serif" font-weight="700" font-size="74" fill="#fff">TN</text></svg>
+      <h1>LINC Warehouse</h1>
+      <span id="readonly-badge" class="readonly-badge" hidden>View only</span>
+    </div>
+    <nav class="topbar-tabs" id="tabs" hidden>
+      <button type="button" class="tab-btn active" data-tab="stock">Stock</button>
+      <button type="button" class="tab-btn" data-tab="pick">Pick line</button>
+      <button type="button" class="tab-btn" data-tab="txn">Transactions <span id="txn-badge" class="badge" hidden></span></button>
+      <button type="button" class="tab-btn" data-tab="set">Settings</button>
+    </nav>
+    <div class="topbar-right">
+      <button id="reload-btn" type="button" hidden title="Reload everything from ArcGIS Online">Refresh data</button>
+      <span id="user-label"></span>
+      <button id="sign-out-btn" type="button" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <div id="status-bar" role="status" hidden></div>
+
+  <main id="screen-stock" class="screen" hidden></main>
+  <main id="screen-pick" class="screen" hidden></main>
+  <main id="screen-txn" class="screen" hidden></main>
+  <main id="screen-set" class="screen" hidden></main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

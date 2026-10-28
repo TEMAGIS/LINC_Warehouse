@@ -1,0 +1,41 @@
+/* LINC Warehouse — additions on top of shared/common.css */
+.readonly-badge { background: #fff4d6; color: #5c3b00; font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.55rem; border-radius: 999px; }
+.mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 0.85rem; white-space: nowrap; }
+
+/* scan boxes */
+.scan-row { display: flex; gap: 0.4rem; }
+.scan-row input { flex: 1; min-width: 0; }
+.scan-row button { flex-shrink: 0; }
+
+/* item picker */
+.ip-results { display: flex; flex-direction: column; gap: 0.25rem; margin: -0.2rem 0 0.6rem; }
+.ip-opt { text-align: left; display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
+.ip-picked { display: flex; justify-content: space-between; align-items: center; gap: 0.6rem; background: var(--info-bg); border-radius: var(--radius); padding: 0.55rem 0.8rem; margin-bottom: 0.6rem; }
+.mv-contents { margin: 0.2rem 0 0.7rem; }
+.mini-table input[type="checkbox"] { width: 1.2rem; height: 1.2rem; }
+
+/* camera scanner */
+.scan-overlay { position: fixed; inset: 0; z-index: 9000; background: rgba(0, 0, 0, 0.85); display: flex; align-items: center; justify-content: center; padding: 1rem; }
+.scan-box { position: relative; width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 0.6rem; align-items: stretch; }
+.scan-box video { width: 100%; max-height: 60vh; background: #000; border-radius: 12px; object-fit: cover; }
+.scan-reticle { position: absolute; left: 12%; right: 12%; top: 22%; height: 26%; border: 3px solid #ffbf47; border-radius: 10px; pointer-events: none; }
+.scan-status { color: #fff; text-align: center; font-size: 0.95rem; }
+.scan-box button { padding: 0.8rem; font-weight: 700; }
+
+/* touch-friendly on phones / tablets */
+@media (max-width: 760px) {
+  .screen { padding: 0.7rem 0.6rem 2rem; }
+  .toolbar input[type="search"] { min-width: 0; flex: 1 1 100%; }
+  .modal { max-width: 100%; max-height: 100vh; border-radius: 12px; }
+  .modal-wide { max-width: 100%; }
+  .modal input, .modal select, .modal textarea { font-size: 1rem; padding: 0.6rem 0.7rem; }
+  .modal-foot { flex-wrap: wrap; }
+  .modal-foot button { flex: 1 1 auto; padding: 0.7rem; }
+  .row-actions { white-space: normal; }
+  .row-actions button { padding: 0.45rem 0.7rem; font-size: 0.85rem; margin: 0.1rem; }
+  .topbar-right #user-label { display: none; }
+}
+@media (pointer: coarse) {
+  button { min-height: 2.5rem; }
+  .count-input { width: 6rem; }
+}
