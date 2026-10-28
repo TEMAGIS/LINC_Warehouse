@@ -137,6 +137,20 @@ export async function retryTransaction(row) {
   return r.ok ? { status: "applied", message: r.message } : { status: "rejected", message: r.message };
 }
 
+/** Administrator-only: closes out a transaction that can never be applied. Inventory is not touched. */
+export async function voidTransaction(row, reason) {
+  const why = String(reason || "").trim();
+  if (!why) throw new Error("Enter a reason.");
+  if (String(row.processing_status || "") === "Success") throw new Error("That transaction was already applied; it can't be voided.");
+  const key = (S.info.txn && S.info.txn.objectIdField) || "OBJECTID";
+  const attrs = fitToLayer({
+    processing_status: "Voided",
+    processed_at: Date.now(),
+    processing_error: `Voided by ${S.me.name}: ${why}`.slice(0, 250),
+  }, S.info.txn);
+  await applyEdits(S.urls.txn, { updates: [{ attributes: { ...attrs, [key]: row._oid } }] });
+}
+
 // ---- webhook (only when APPLY_MODE is "webhook") ---------------------------------------------------------
 
 const bareGid = (g) => String(g || "").replace(/[{}]/g, "").toLowerCase();

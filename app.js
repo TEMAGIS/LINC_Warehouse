@@ -16,10 +16,11 @@ import { initStock } from "./stock.js";
 import { initPickline } from "./pickline.js";
 import { initTransactions } from "./transactions.js";
 import { initSettings } from "./settings.js";
+import { loadUsers, decideAccess, blockedMessage, addUser, initUsers } from "./users.js";
 
-const TABS = ["stock", "pick", "txn", "set"];
+const TABS = ["stock", "pick", "txn", "users", "set"];
 
-const tabAllowed = (t) => (t === "set" ? S.isAdmin : true);
+const tabAllowed = (t) => (t === "set" || t === "users" ? S.isAdmin : true);
 
 function switchTab(tab) {
   if (!tabAllowed(tab)) tab = "stock";
@@ -32,7 +33,7 @@ function switchTab(tab) {
 function updateBadges() {
   const b = $("#txn-badge");
   if (!b) return;
-  const n = S.txns.filter((t) => String(t.processing_status || "Pending") !== "Success").length;
+  const n = S.txns.filter((t) => !["Success", "Voided"].includes(String(t.processing_status || "Pending"))).length;
   b.textContent = n;
   b.hidden = !n;
 }
@@ -62,14 +63,31 @@ async function onReady({ me, profile }) {
     console.error(err);
     return setStatus(`Could not load the layers: ${err.message}`, "error");
   }
-  S.isAdmin = await lookupAdmin(me.email);
+  const legacyAdmin = await lookupAdmin(me.email);
   await discoverShipments();
+  try { await loadUsers(); } catch (err) { console.warn("Users load failed:", err); S.users = []; }
+
+  const access = decideAccess({ users: S.users, usersReady: S.usersReady, me: S.me, legacyAdmin });
+  if (!access.allowed) {
+    setStatus("");
+    document.getElementById("not-provisioned-screen").hidden = false;
+    $("#not-provisioned-message").textContent = blockedMessage(access, S.me.email);
+    return;
+  }
+  if (access.bootstrap) {
+    try { await addUser({ full_name: S.me.name, email: S.me.email, username: S.me.username, role: "Administrator", notes: "First administrator (from Assigned Inventory Users)" }); }
+    catch (err) { console.warn("Couldn't add the first administrator to the list:", err); }
+  }
+  S.role = access.role;
+  S.isAdmin = S.role === "Administrator";
+  S.canEdit = S.role !== "View only" && S.layerCanEdit;
+
   try { await loadShipments(); } catch (err) { console.warn(err); }
 
   S.actions.refresh = () => refresh();
-  initStock(); initPickline(); initTransactions(); initSettings();
+  initStock(); initPickline(); initTransactions(); initSettings(); initUsers();
 
-  $("#user-label").textContent = `${S.me.name} · ${S.isAdmin ? "Inventory Administrator" : S.canEdit ? "Warehouse staff" : "View only"}${S.isAdmin && !S.canEdit ? " (view only)" : ""}`;
+  $("#user-label").textContent = `${S.me.name} · ${S.role}${S.role !== "View only" && !S.canEdit ? " (view only)" : ""}`;
   $("#readonly-badge").hidden = S.canEdit;
   for (const b of $$("#tabs .tab-btn")) b.hidden = !tabAllowed(b.dataset.tab);
   $("#tabs").hidden = false;
@@ -88,7 +106,12 @@ async function onReady({ me, profile }) {
   setStatus("");
   updateBadges();
   switchTab("stock");
-  if (!S.canEdit) toast("You have view-only access. Ask an Inventory Administrator for edit access to the Transactions layer.", "info", 9000);
+  if (!S.canEdit) {
+    toast(S.role !== "View only" && !S.layerCanEdit
+      ? "Your role allows changes, but your ArcGIS account can't edit the Transactions / Inventory Balance layers. Ask an administrator to share them with editing."
+      : "You have view-only access.", "info", 9000);
+  }
+  if (S.isAdmin && !S.usersReady) toast("Set up the user list: Settings → Add the Users table.", "info", 9000);
 }
 
 startSession({

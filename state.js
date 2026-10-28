@@ -5,7 +5,11 @@ export const S = {
   profile: null,
   me: { name: "", first: "", last: "", email: "", username: "" },
   isAdmin: false,   // Inventory Administrator (Users layer)
-  canEdit: false,   // can add rows to the Transactions layer -> warehouse staff
+  canEdit: false,   // may change things: role allows it AND the ArcGIS account can edit the layers
+  layerCanEdit: false, // the ArcGIS account can add Transactions / edit Inventory Balance
+  role: "",         // "Administrator" | "Staff" | "View only"
+  usersReady: false, // the Users table exists in the shipments service
+  users: [],        // warehouse user list rows
   tab: "stock",
   urls: { bal: "", txn: "", lib: "" },
   info: { bal: null, txn: null, lib: null },   // getLayerInfo results (fields, objectIdField, capabilities)

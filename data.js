@@ -32,7 +32,8 @@ export async function resolveLayers() {
   // Warehouse staff = can add Transactions AND (in browser mode) edit Inventory Balance.
   // (Layer capabilities reflect what this account may do.)
   S.canEditBalance = can(ib, "update") || can(ib, "editing");
-  S.canEdit = can(it, "create") && can(it, "editing") && (CONFIG.APPLY_MODE === "webhook" || S.canEditBalance);
+  S.layerCanEdit = can(it, "create") && can(it, "editing") && (CONFIG.APPLY_MODE === "webhook" || S.canEditBalance);
+  S.canEdit = S.layerCanEdit; // app.js narrows this by the person's role
 }
 
 export async function loadBalances() {

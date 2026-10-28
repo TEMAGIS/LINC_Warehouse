@@ -7,7 +7,8 @@ import { $, esc } from "./shared/util.js";
 import { openModal, toast } from "./shared/ui.js";
 import { S } from "./state.js";
 import { picklineLanes } from "./loc.js";
-import { createShipmentsService, discoverShipments, loadShipments } from "./shipments.js";
+import { createShipmentsService, discoverShipments, loadShipments, addUsersTable } from "./shipments.js";
+import { loadUsers } from "./users.js";
 
 const NEED = {
   bal: {
@@ -62,6 +63,16 @@ export function initSettings() {
         toast(`Couldn't create it: ${err.message}`, "error", 10000);
       }
       renderSettings();
+    } else if (b.dataset.act === "add-users") {
+      b.disabled = true;
+      try {
+        await addUsersTable();
+        await loadUsers();
+        toast("Users table added. Open the Users tab to add people.", "success");
+      } catch (err) {
+        toast(`Couldn't add it: ${err.message}`, "error", 10000);
+      }
+      renderSettings();
     } else if (b.dataset.act === "recheck") {
       await discoverShipments();
       await loadShipments();
@@ -86,11 +97,18 @@ export function renderSettings() {
              <div class="set-actions"><button type="button" class="btn-primary" data-act="create-ship">Create the shipments service</button><button type="button" data-act="recheck">Check again</button></div>
              <p class="hint">Needs an ArcGIS account that can publish content. Afterwards, share it with the same group as the inventory layers, with editing on.</p>`}
       </div>
+      ${ship.ready ? `<div class="card"><h2>User list</h2>
+        ${S.usersReady
+          ? `<p class="stock-ok">Users table found · ${S.users.length} ${S.users.length === 1 ? "person" : "people"}.</p><p class="sub">Only people on the list can open the app. Manage them on the Users tab.</p>`
+          : `<p>The Users table isn't in the shipments service yet, so anyone who can open the layers gets in. Add it to turn on the user list.</p>
+             <div class="set-actions"><button type="button" class="btn-primary" data-act="add-users">Add the Users table</button></div>
+             <p class="hint">Needs the account that owns the service. You'll be added as the first administrator if you're an Inventory Administrator in the Assigned Inventory Users layer.</p>`}
+      </div>` : ""}
       <div class="card"><h2>Applying to inventory</h2>
         ${CONFIG.APPLY_MODE === "webhook"
           ? (CONFIG.WEBHOOK_URL ? `<p class="stock-ok">Webhook mode: the app calls the Lambda after adding each transaction.</p>` : `<p class="stock-out">Webhook mode, but <code>WEBHOOK_URL</code> isn't set. Transactions will stay Pending.</p>`)
           : `<p class="stock-ok">Browser mode: the app updates Inventory Balance itself, then marks the transaction Success or Error.</p>
-             <p class="${S.canEditBalance ? "sub" : "stock-out"}">${S.canEditBalance ? "Your account can edit Inventory Balance." : "Your account can't edit Inventory Balance, so nothing can be applied."}</p>`}
+             <p class="${S.canEditBalance ? "sub" : "stock-out"}">${S.canEditBalance ? "Your account can edit Inventory Balance." : "Your ArcGIS account can't edit Inventory Balance, so nothing can be applied. A role in this app can't fix that: on the Inventory Balance item in ArcGIS Online, turn on Editing and share it with a group whose members can update."}</p>`}
       </div>
       <div class="card"><h2>Pick line</h2>
         <p>Zone <code>${esc(CONFIG.PICKLINE.ZONE)}</code> · ${lanes.length} lane${lanes.length > 1 ? "s" : ""}</p>
@@ -98,7 +116,7 @@ export function renderSettings() {
         <p class="hint">Print location labels for each lane. To add lanes, raise <code>PICKLINE.LANES</code> in <code>config.js</code>.</p>
       </div>
       <div class="card"><h2>Your access</h2>
-        <p>${S.isAdmin ? "Inventory Administrator" : "Warehouse staff"} · ${S.canEdit ? "can add transactions and library items" : "view only"}</p>
+        <p>${esc(S.role)} · ${S.canEdit ? "can add transactions and library items" : "view only"}${S.role !== "View only" && !S.layerCanEdit ? " (the ArcGIS account lacks edit access)" : ""}</p>
         <p class="sub">${esc(S.me.name)} · ${esc(S.me.email)}</p>
       </div>
       ${rep.map((r) => `<div class="card"><h2>${esc(r.label)} fields</h2>

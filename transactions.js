@@ -5,11 +5,11 @@
 // ---------------------------------------------------------------------------
 import { CONFIG } from "./config.js";
 import { $, esc, debounce, fmtDateTime, toCSV, downloadText } from "./shared/util.js";
-import { toast } from "./shared/ui.js";
+import { toast, openModal } from "./shared/ui.js";
 import { S, itemName, findLib } from "./state.js";
 import { codeLabel, cleanScan } from "./loc.js";
 import { fmtNum, unitLabel } from "./units.js";
-import { retryTransaction } from "./txn.js";
+import { retryTransaction, voidTransaction } from "./txn.js";
 import { loadBalances, loadTransactions } from "./data.js";
 
 const F = { q: "", type: "", status: "", page: 1 };
@@ -20,7 +20,8 @@ const side = (t, p) => {
   return [t[`${p}zone`], t[`${p}row`], t[`${p}bay`], t[`${p}level`], t[`${p}position`]].filter((x) => x !== null && x !== undefined && x !== "").join("-");
 };
 const statusOf = (t) => String(t.processing_status || "").trim() || "Pending";
-const stClass = (s) => (s === "Success" ? "st-ok" : s === "Error" ? "st-bad" : "st-pending");
+const stClass = (s) => (s === "Success" ? "st-ok" : s === "Error" ? "st-bad" : s === "Voided" ? "st-muted" : "st-pending");
+const notApplied = (t) => { const s = statusOf(t); return s !== "Success" && s !== "Voided"; };
 
 export function filterTxns(rows, { q = "", type = "", status = "" } = {}) {
   const ws = String(q || "").toLowerCase().split(/\s+/).filter(Boolean);
@@ -49,6 +50,24 @@ export function initTransactions() {
     if (!b) return;
     if (b.dataset.act === "more") { F.page += 1; renderRows(); }
     else if (b.dataset.act === "csv") exportCsv();
+    else if (b.dataset.act === "void") {
+      const row = S.txns.find((t) => t.globalid === b.dataset.gid);
+      if (!row) return;
+      openModal({
+        title: "Void this transaction?",
+        body: `<p>${esc(itemName(row))} · ${esc(row.transaction_type)} · qty ${fmtNum(row.quantity)}. Voiding closes it out without changing inventory. It can't be retried afterwards.</p>
+          <label>Reason *<input id="void-reason" placeholder="e.g. Bad quantity from the form; entered again correctly" /></label>`,
+        buttons: [
+          { label: "Cancel" },
+          { label: "Void", kind: "danger", action: async (m) => {
+            await voidTransaction(row, m.el.querySelector("#void-reason").value);
+            toast("Voided.", "success");
+            await loadTransactions();
+            S.actions.refresh && S.actions.refresh();
+          } },
+        ],
+      });
+    }
     else if (b.dataset.act === "retry") {
       b.disabled = true;
       const row = S.txns.find((t) => t.globalid === b.dataset.gid);
@@ -63,12 +82,12 @@ export function initTransactions() {
 
 export function renderTxns() {
   const el = $("#screen-txn");
-  const pending = S.txns.filter((t) => statusOf(t) !== "Success").length;
+  const pending = S.txns.filter(notApplied).length;
   el.innerHTML = `
     <div class="toolbar">
       <input id="tx-q" type="search" placeholder="Item, barcode, location, person" value="${esc(F.q)}" aria-label="Search transactions" />
       <select id="tx-type" aria-label="Type"><option value="">All types</option>${["Receive", "Move", "Ship"].map((t) => `<option ${F.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
-      <select id="tx-status" aria-label="Status"><option value="">All statuses</option>${["Success", "Pending", "Error"].map((t) => `<option ${F.status === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+      <select id="tx-status" aria-label="Status"><option value="">All statuses</option>${["Success", "Pending", "Error", "Voided"].map((t) => `<option ${F.status === t ? "selected" : ""}>${t}</option>`).join("")}</select>
       ${pending ? `<span class="tag tag-restricted">${pending} not applied</span>` : ""}
       <span class="spacer"></span>
       <button type="button" data-act="csv">Export CSV</button>
@@ -96,7 +115,8 @@ function renderRows() {
           <td class="mono">${esc(side(t, "from_"))}</td><td class="mono">${esc(side(t, "to_"))}</td>
           <td class="sub">${esc(t.performed_by || "")}${t.shipment_id ? `<div>${esc(t.shipment_id)}</div>` : ""}</td>
           <td><span class="status-pill ${stClass(st)}">${esc(st)}</span>${t.processing_error ? `<div class="sub">${esc(t.processing_error)}</div>` : ""}
-            ${S.canEdit && st !== "Success" && t.globalid ? `<button type="button" class="link-btn" data-act="retry" data-gid="${esc(t.globalid)}">Retry</button>` : ""}</td>
+            ${S.canEdit && st !== "Success" && st !== "Voided" && t.globalid ? `<button type="button" class="link-btn" data-act="retry" data-gid="${esc(t.globalid)}">Retry</button>` : ""}
+            ${S.isAdmin && S.canEdit && st !== "Success" && st !== "Voided" && t.globalid ? `<button type="button" class="link-btn" data-act="void" data-gid="${esc(t.globalid)}">Void</button>` : ""}</td>
         </tr>`;
       }).join("")
     : `<tr><td colspan="8" class="empty">No transactions match.</td></tr>`;

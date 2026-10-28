@@ -67,6 +67,23 @@ export const LINES_TABLE = {
   ],
 };
 
+// Who may use the app and in what role (see users.js). Lives in the same hosted service.
+export const USERS_TABLE = {
+  name: "Users",
+  displayField: "full_name",
+  fields: [
+    str("email", 150, "Email"),
+    str("username", 100, "ArcGIS username"),
+    str("full_name", 150, "Name"),
+    str("role", 20, "Role"),
+    str("active", 5, "Active"),
+    str("phone", 40, "Phone"),
+    str("notes", 255, "Notes"),
+    str("added_by", 150, "Added by"),
+    date("added_date", "Added"),
+  ],
+};
+
 function toTableDefinition(spec) {
   const base = (f) => ({ sqlType: "sqlTypeOther", nullable: true, editable: true, domain: null, defaultValue: null, ...f });
   return {
@@ -93,7 +110,7 @@ const adminUrl = (u) => u.replace("/rest/services/", "/rest/admin/services/");
 export async function createShipmentsService() {
   const profile = await auth.fetchProfile();
   const username = (profile && profile.username) || auth.getUsername();
-  const description = "LINC Warehouse: shipment plans and their lines";
+  const description = "LINC Warehouse: shipment plans, their lines, and the warehouse user list";
   const created = await esriRequest(`${CONFIG.ARCGIS_PORTAL_URL}/sharing/rest/content/users/${encodeURIComponent(username)}/createService`, {
     createParameters: JSON.stringify({
       name: CONFIG.SHIPMENTS_SERVICE_TITLE, serviceDescription: description, hasStaticData: false, maxRecordCount: 2000,
@@ -104,7 +121,7 @@ export async function createShipmentsService() {
   });
   const svc = String(created.serviceurl || created.encodedServiceURL || "").replace(/\/+$/, "");
   if (!svc) throw new Error("ArcGIS did not return a service URL.");
-  await esriRequest(`${adminUrl(svc)}/addToDefinition`, { addToDefinition: JSON.stringify({ tables: [SHIPMENTS_TABLE, LINES_TABLE].map(toTableDefinition) }) });
+  await esriRequest(`${adminUrl(svc)}/addToDefinition`, { addToDefinition: JSON.stringify({ tables: [SHIPMENTS_TABLE, LINES_TABLE, USERS_TABLE].map(toTableDefinition) }) });
   try {
     await esriRequest(`${adminUrl(svc)}/updateDefinition`, {
       updateDefinition: JSON.stringify({ editorTrackingInfo: { enableEditorTracking: true, enableOwnershipAccessControl: false, allowOthersToUpdate: true, allowOthersToDelete: true, allowOthersToQuery: true } }),
@@ -118,6 +135,8 @@ export async function createShipmentsService() {
 export async function discoverShipments() {
   const H = S.shipments;
   H.ready = false;
+  H.usersId = null;
+  S.usersReady = false;
   try {
     let url = CONFIG.SHIPMENTS_SERVICE_URL;
     if (!url && CONFIG.SHIPMENTS_ITEM_ID) url = await itemServiceUrl(CONFIG.SHIPMENTS_ITEM_ID);
@@ -131,7 +150,10 @@ export async function discoverShipments() {
     const head = t.find((x) => x.name === SHIPMENTS_TABLE.name);
     const lines = t.find((x) => x.name === LINES_TABLE.name);
     if (!head || !lines) return false;
+    const users = t.find((x) => x.name === USERS_TABLE.name);
     H.url = url; H.headerId = head.id; H.linesId = lines.id; H.ready = true;
+    H.usersId = users ? users.id : null;
+    S.usersReady = !!users;
     return true;
   } catch (err) {
     console.info("Shipments service not available:", err.message);
@@ -215,4 +237,13 @@ export async function patchLines(items) {
   const H = S.shipments;
   if (!items.length) return;
   await applyEdits(`${H.url}/${H.linesId}`, { updates: items.map(({ line, patch }) => ({ attributes: { OBJECTID: line.OBJECTID ?? line._oid, ...patch } })) });
+}
+
+/** Adds the Users table to a service created before the user list existed (service owner / admin account). */
+export async function addUsersTable() {
+  const H = S.shipments;
+  if (!H.url) throw new Error("The shipments service wasn't found.");
+  await esriRequest(`${adminUrl(H.url)}/addToDefinition`, { addToDefinition: JSON.stringify({ tables: [toTableDefinition(USERS_TABLE)] }) });
+  await discoverShipments();
+  if (!S.usersReady) throw new Error("The table was added but couldn't be found afterwards. Reload the page.");
 }

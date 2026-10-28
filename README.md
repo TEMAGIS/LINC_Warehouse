@@ -39,17 +39,28 @@ It starts with **one lane**. To add lanes, raise `PICKLINE.LANES` in `config.js`
 
 ## Shipment plans
 
-Plans live in a small hosted service the app creates (**Settings → Create the shipments service**, needs a publisher account): `Shipments` (one row per plan) and `Shipment_Lines`. Nothing in a plan changes inventory until you **Ship**. Open plans count as *Promised*, so the same pick-line stock can't be promised twice (**Available = On hand − Promised**).
+Plans live in a small hosted service the app creates (**Settings → Create the shipments service**, needs a publisher account): `Shipments` (one row per plan), `Shipment_Lines` and `Users`. If the service already exists without Users, **Settings → Add the Users table** adds it (use the account that owns the service). Nothing in a plan changes inventory until you **Ship**. Open plans count as *Promised*, so the same pick-line stock can't be promised twice (**Available = On hand − Promised**).
 
-## Roles
+## Users and roles
 
-| | Inventory Administrator | Warehouse staff | Everyone else |
+Only people on the **warehouse user list** can open the app. The list is the `Users` table in the shipments service, managed on the **Users** tab (administrators only): add a person (optionally search ArcGIS Online to prefill name, email and username), change role, turn access off, or remove them. The app refuses to remove, demote or deactivate the **last active administrator**.
+
+| | Administrator | Staff | View only |
 |---|---|---|---|
 | View stock, transactions, plans | yes | yes | yes |
-| Receive, Move, Stage, plans, Ship, add to library | yes | yes | no (view only) |
-| Settings, create the shipments service | yes | no | no |
+| Receive, Move, Stage, plans, Ship, add to library | yes | yes | no |
+| Retry a failed transaction | yes | yes | no |
+| **Void** a transaction that can never apply | yes | no | no |
+| Users and Settings tabs | yes | no | no |
 
-*Administrator* = `permissions = Property Officer` in the Assigned Inventory **Users** layer (matched by email). *Warehouse staff* = an account that can **add rows to the Transactions layer and edit Inventory Balance** (ArcGIS sharing is the real boundary; the app just hides buttons you can't use).
+- Not on the list (or turned off): the "No access yet" screen.
+- **First administrator.** While the list has no active administrator, an Inventory Administrator from the Assigned Inventory **Users** layer (`permissions = Property Officer`, matched by email) gets in as Administrator and is added to the list automatically.
+- **Before the Users table exists** (Settings shows "Add the Users table"), the app behaves as before: that legacy administrator is an Administrator, everyone else Staff.
+- **Roles don't grant ArcGIS rights.** The role decides what the app offers. What an account can actually write is set by ArcGIS sharing. Staff need edit access to the Transactions and Inventory Balance layers. If a role allows editing but the account can't, the app shows "view only" and says why. The fix is in ArcGIS Online: turn on **Editing** for the Inventory Balance item and share it with a group whose members can update.
+
+## Voiding a stuck transaction
+
+Some Error transactions can never apply (for example a bad quantity from the old form). Retry won't fix them. An administrator can **Void** one with a reason: it is set to `processing_status = Voided`, inventory is untouched, it drops out of the "not applied" count, and Retry is no longer offered. The reconcile and webhook Lambdas skip `Voided` rows (redeploy `reconcile_inventory.py` and `webhook_apply_transaction.py` if you still use them).
 
 ## Setup checklist
 
@@ -59,7 +70,7 @@ Plans live in a small hosted service the app creates (**Settings → Create the 
 4. **Webhook Lambda (only while the Survey123 form is still in use).** Redeploy `lambda_functions/webhook_apply_transaction.py` so the form can't ship from a shelf either: env vars `PICKLINE_ZONE` (default `PL`) and `ENFORCE_PICKLINE_SHIP` (default `1`). The console doesn't need it. Retire the Lambda when the form is retired.
 5. **Transactions layer, two optional fields** so shipments are traceable: `shipment_id` (text 50) and `ship_to` (text 255). Add them to the Transactions survey and republish, or add them in ArcGIS Online. The app fills them only if they exist.
 6. **Barcode Library:** republish the updated survey so `count_unit`, `units_per_pack`, `unit_volume`, `unit_volume_uom` and `gallons_per_count_unit` exist (until then, items are added without pack/unit details and the app tells you).
-7. **Settings → Create the shipments service**, then **share it** with the same group as the inventory layers with **editing on**. Optionally paste its item ID into `SHIPMENTS_ITEM_ID`.
+7. **Settings → Create the shipments service** (or **Add the Users table** if it exists), then **share it** with the same group as the inventory layers with **editing on**. Then open **Users** and add your people. Optionally paste its item ID into `SHIPMENTS_ITEM_ID`.
 8. Open **Settings** and read the field checks; the console also logs missing fields.
 
 ## Files
@@ -67,7 +78,7 @@ Plans live in a small hosted service the app creates (**Settings → Create the 
 ```
 index.html  app.css  app.js  config.js  lists.js
 state.js  data.js  loc.js  units.js  txn.js  balance.js
-widgets.js  scanner.js  library.js  dialogs.js
+widgets.js  scanner.js  library.js  dialogs.js  users.js
 stock.js  pickline.js  shipments.js  transactions.js  settings.js
 shared/  arcgis-auth.js  esri-client.js  session.js  ui.js  util.js  common.css   (TEMAzon's shared files)
 ```
