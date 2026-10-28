@@ -9,6 +9,7 @@ import { S } from "./state.js";
 import { picklineLanes } from "./loc.js";
 import { createShipmentsService, discoverShipments, loadShipments, addUsersTable } from "./shipments.js";
 import { loadUsers } from "./users.js";
+import { missingFields, addMissingFields, LABELS } from "./schemafix.js";
 
 const NEED = {
   bal: {
@@ -63,6 +64,17 @@ export function initSettings() {
         toast(`Couldn't create it: ${err.message}`, "error", 10000);
       }
       renderSettings();
+    } else if (b.dataset.act === "add-fields") {
+      b.disabled = true;
+      const keys = b.dataset.key === "all" ? Object.keys(missingFields()) : [b.dataset.key];
+      const done = [];
+      try {
+        for (const k of keys) { const added = await addMissingFields(k); if (added.length) done.push(`${LABELS[k]}: ${added.join(", ")}`); }
+        toast(done.length ? `Added ${done.join(" · ")}` : "Nothing to add.", "success", 9000);
+      } catch (err) {
+        toast(`Couldn't add fields: ${err.message}. This needs the account that owns the layer (or an org administrator).`, "error", 12000);
+      }
+      renderSettings();
     } else if (b.dataset.act === "add-users") {
       b.disabled = true;
       try {
@@ -86,6 +98,7 @@ export function renderSettings() {
   const el = $("#screen-set");
   const lanes = picklineLanes();
   const rep = schemaReport();
+  const miss = missingFields();
   const ship = S.shipments;
   el.innerHTML = `
     <p class="sub set-intro">Admin view. These checks read the live layers; nothing here changes inventory.</p>
@@ -119,6 +132,12 @@ export function renderSettings() {
         <p>${esc(S.role)} · ${S.canEdit ? "can add transactions and library items" : "view only"}${S.role !== "View only" && !S.layerCanEdit ? " (the ArcGIS account lacks edit access)" : ""}</p>
         <p class="sub">${esc(S.me.name)} · ${esc(S.me.email)}</p>
       </div>
+      ${Object.keys(miss).length ? `<div class="card"><h2>Add missing fields</h2>
+        <p>The app uses fields these layers don't have yet:</p>
+        <p class="sub">${Object.entries(miss).map(([k, f]) => `<strong>${esc(LABELS[k])}</strong>: ${f.map((x) => `<code>${esc(x.name)}</code>`).join(", ")}`).join("<br>")}</p>
+        <div class="set-actions"><button type="button" class="btn-primary" data-act="add-fields" data-key="all">Add all missing fields</button></div>
+        <p class="hint">Adds fields only; nothing is changed or deleted. Needs the account that owns the layers (or an org administrator). If a layer comes from a Survey123 form, add the same fields to the survey too, or republishing it can remove them.</p>
+      </div>` : ""}
       ${rep.map((r) => `<div class="card"><h2>${esc(r.label)} fields</h2>
         ${!r.known ? `<p class="sub">Couldn't read the layer's fields.</p>`
           : `${r.missingRequired.length ? `<p class="stock-out">Missing (required): ${r.missingRequired.map((n) => `<code>${esc(n)}</code>`).join(", ")}</p>` : `<p class="stock-ok">All required fields found.</p>`}

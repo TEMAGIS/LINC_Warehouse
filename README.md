@@ -68,8 +68,8 @@ Some Error transactions can never apply (for example a bad quantity from the old
 2. **OAuth.** It reuses the Lookup page's OAuth app (`ARCGIS_APP_ID` in `config.js`). Add `https://temagis.github.io/LINC_Warehouse/` as a **Redirect URI** on that app, trailing slash included. (Or register a new app and replace the ID.)
 3. **Sharing.** Warehouse staff need **edit** access to the Transactions and Inventory Balance layers (and the Barcode Library to add items). Everyone else gets view-only.
 4. **Webhook Lambda (only while the Survey123 form is still in use).** Redeploy `lambda_functions/webhook_apply_transaction.py` so the form can't ship from a shelf either: env vars `PICKLINE_ZONE` (default `PL`) and `ENFORCE_PICKLINE_SHIP` (default `1`). The console doesn't need it. Retire the Lambda when the form is retired.
-5. **Transactions layer, two optional fields** so shipments are traceable: `shipment_id` (text 50) and `ship_to` (text 255). Add them to the Transactions survey and republish, or add them in ArcGIS Online. The app fills them only if they exist.
-6. **Barcode Library:** republish the updated survey so `count_unit`, `units_per_pack`, `unit_volume`, `unit_volume_uom` and `gallons_per_count_unit` exist (until then, items are added without pack/unit details and the app tells you).
+5. **Fields.** Easiest: **Settings → Add all missing fields** (as the account that owns the layers, or an org admin). It adds only what's missing: Transactions `shipment_id`, `ship_to`, `unit_of_measure`, `processing_*`, `processed_at`, `inventory_balance_gids`; Inventory Balance `last_transaction_id`, `quantity_available`, `unit_of_measure`, `item`; Barcode Library `count_unit`, `units_per_pack`, `unit_volume`, `unit_volume_uom`, `gallons_per_count_unit`. Survey123-published layers: add the same fields to the survey too, or republishing can remove them. Manual alternative for Transactions: **two optional fields** so shipments are traceable: `shipment_id` (text 50) and `ship_to` (text 255). Add them to the Transactions survey and republish, or add them in ArcGIS Online. The app fills them only if they exist.
+6. **Barcode Library:** (covered by the button above) otherwise republish the updated survey so `count_unit`, `units_per_pack`, `unit_volume`, `unit_volume_uom` and `gallons_per_count_unit` exist (until then, items are added without pack/unit details and the app tells you).
 7. **Settings → Create the shipments service** (or **Add the Users table** if it exists), then **share it** with the same group as the inventory layers with **editing on**. Then open **Users** and add your people. Optionally paste its item ID into `SHIPMENTS_ITEM_ID`.
 8. Open **Settings** and read the field checks; the console also logs missing fields.
 
@@ -78,7 +78,7 @@ Some Error transactions can never apply (for example a bad quantity from the old
 ```
 index.html  app.css  app.js  config.js  lists.js
 state.js  data.js  loc.js  units.js  txn.js  balance.js
-widgets.js  scanner.js  library.js  dialogs.js  users.js
+widgets.js  scanner.js  library.js  dialogs.js  users.js  schemafix.js
 stock.js  pickline.js  shipments.js  transactions.js  settings.js
 shared/  arcgis-auth.js  esri-client.js  session.js  ui.js  util.js  common.css   (TEMAzon's shared files)
 ```
