@@ -80,7 +80,7 @@ export function openAddToLibrary({ barcode = "", onSaved = null } = {}) {
     <fieldset><legend>Counting</legend>
       <div class="two-col">
         <label>What is one counted unit? <select id="lb-cu">${options(COUNT_UNITS, { blank: null })}</select></label>
-        <label id="lb-pack-wrap" hidden>Items in each pack / case / box <input id="lb-pack" type="number" min="1" /></label>
+        <label id="lb-pack-wrap" hidden>Items in each pack / case / box <input id="lb-pack" type="number" min="1" step="1" /></label>
       </div>
       <div data-items="${esc(VOLUME_ITEMS.join("|"))}" hidden>
         <div class="two-col">
@@ -156,7 +156,7 @@ export function openAddToLibrary({ barcode = "", onSaved = null } = {}) {
     const uv = Number(v("lb-uv")) || 0;
     const uvu = v("lb-uvu");
     const cu = v("lb-cu");
-    const pack = PACK_UNITS.includes(cu) ? Number(v("lb-pack")) || null : null;
+    const pack = PACK_UNITS.includes(cu) ? Math.round(Number(v("lb-pack"))) || null : null;
     const hasVol = VOLUME_ITEMS.includes(rawItem) && uv > 0 && uvu;
     const gal = hasVol ? Math.round(gallonsPerVolume(uv, uvu) * (pack || 1) * 1000) / 1000 : null;
     const attrs = {

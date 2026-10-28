@@ -33,10 +33,14 @@ export const WANTED = {
   ],
   lib: [
     str("count_unit", 30, "Count unit"),
-    dbl("units_per_pack", "Units per pack"),
+    { name: "units_per_pack", alias: "Units per pack", type: "esriFieldTypeInteger" },
     dbl("unit_volume", "Unit volume"),
     str("unit_volume_uom", 20, "Unit volume UOM"),
     dbl("gallons_per_count_unit", "Gallons per count unit"),
+    str("delete_flag", 5, "Flagged for delete"),
+    str("delete_reason", 255, "Delete reason"),
+    str("flagged_by", 150, "Flagged by"),
+    dat("flagged_date", "Flagged date"),
   ],
 };
 

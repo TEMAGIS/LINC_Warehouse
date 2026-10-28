@@ -16,9 +16,10 @@ import { initStock } from "./stock.js";
 import { initPickline } from "./pickline.js";
 import { initTransactions } from "./transactions.js";
 import { initSettings } from "./settings.js";
+import { initLibTab } from "./libtab.js";
 import { loadUsers, decideAccess, blockedMessage, addUser, initUsers } from "./users.js";
 
-const TABS = ["stock", "pick", "txn", "users", "set"];
+const TABS = ["stock", "pick", "txn", "lib", "users", "set"];
 
 const tabAllowed = (t) => (t === "set" || t === "users" ? S.isAdmin : true);
 
@@ -85,7 +86,7 @@ async function onReady({ me, profile }) {
   try { await loadShipments(); } catch (err) { console.warn(err); }
 
   S.actions.refresh = () => refresh();
-  initStock(); initPickline(); initTransactions(); initSettings(); initUsers();
+  initStock(); initPickline(); initTransactions(); initSettings(); initUsers(); initLibTab();
 
   $("#user-label").textContent = `${S.me.name} · ${S.role}${S.role !== "View only" && !S.canEdit ? " (view only)" : ""}`;
   $("#readonly-badge").hidden = S.canEdit;

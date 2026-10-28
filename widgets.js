@@ -115,6 +115,7 @@ export function itemPicker(host, { mode = "library", onPick = () => {}, label = 
         .map((s) => ({ sku: s.sku, lib: findLib(s.sku), name: s.name, qty: s.qty }));
     } else {
       found = S.library
+        .filter((r) => String(ci(r, "delete_flag") ?? "").toLowerCase() !== "yes")
         .filter((r) => ws.every((w) => [ci(r, "item"), ci(r, "make"), ci(r, "model"), ci(r, "description"), ci(r, "barcode")].join(" ").toLowerCase().includes(w)))
         .map(fromLib);
     }
