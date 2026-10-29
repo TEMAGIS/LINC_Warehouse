@@ -174,3 +174,23 @@
 .tx-totals { border: 1px solid var(--border); border-radius: var(--radius, 8px); background: var(--card, #fff); padding: 0.6rem 0.9rem; margin: 0.4rem 0 1rem; }
 .tx-totals summary { cursor: pointer; margin-bottom: 0.5rem; }
 .tx-totals .tiles { margin: 0.4rem 0 0.8rem; }
+
+/* Clear (×) button inside search boxes */
+.clr-wrap { position: relative; display: inline-flex; align-items: center; max-width: 100%; }
+.clr-wrap > input[type="search"] { flex: 1 1 auto; padding-right: 2rem; -webkit-appearance: none; appearance: none; }
+.clr-wrap > input[type="search"]::-webkit-search-cancel-button { display: none; }
+.clr-btn { position: absolute; right: 0.3rem; top: 50%; transform: translateY(-50%); width: 1.5rem; height: 1.5rem; padding: 0; border: 0; border-radius: 50%; background: #e3e7ee; color: #3b4658; font-size: 1.05rem; line-height: 1.5rem; text-align: center; cursor: pointer; }
+.clr-btn:hover { background: #cfd6e2; }
+.clr-btn[hidden] { display: none; }
+.pl-cat .clr-wrap, .catalog-tools .clr-wrap { display: flex; width: 100%; }
+.pl-cat .clr-wrap > input { margin-bottom: 0; }
+@media (max-width: 640px) { .toolbar .clr-wrap { flex: 1 1 100%; } }
+
+/* Stock toolbar: "Show" filters and the "View as" switch look like different controls */
+.tb-group { display: inline-flex; align-items: center; gap: 0.5rem; }
+.tb-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--navy, #002868); border-radius: 8px; overflow: hidden; background: #fff; }
+.seg-btn { border: 0; border-radius: 0; background: #fff; color: var(--navy, #002868); padding: 0.4rem 0.85rem; font-weight: 600; cursor: pointer; }
+.seg-btn + .seg-btn { border-left: 1px solid var(--navy, #002868); }
+.seg-btn.active { background: var(--navy, #002868); color: #fff; }
+.seg-btn:not(.active):hover { background: #eef3fb; }

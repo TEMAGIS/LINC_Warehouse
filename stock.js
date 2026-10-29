@@ -89,11 +89,11 @@ export function renderStock() {
     <div class="toolbar">
       <input id="sk-q" type="search" placeholder="Location (Z1, Z1AA) or item / barcode" value="${esc(F.q)}" aria-label="Search stock" />
       <button type="button" data-act="scan">Scan</button>
-      <div class="pill-row">${[["all", "All"], ["storage", "Storage"], ["pick", "Pick line"]]
-        .map(([k, l]) => `<button type="button" class="pill ${F.scope === k ? "active" : ""}" data-act="scope" data-s="${k}">${l}</button>`).join("")}</div>
-      <div class="pill-row" role="group" aria-label="View">${[["rows", "By location"], ["items", "Totals by item"]]
-        .map(([k, l]) => `<button type="button" class="pill ${F.view === k ? "active" : ""}" data-act="view" data-v="${k}">${l}</button>`).join("")}</div>
+      <div class="tb-group"><span class="tb-label">Show</span><div class="pill-row">${[["all", "All"], ["storage", "Storage"], ["pick", "Pick line"]]
+        .map(([k, l]) => `<button type="button" class="pill ${F.scope === k ? "active" : ""}" data-act="scope" data-s="${k}">${l}</button>`).join("")}</div></div>
       <span class="spacer"></span>
+      <div class="tb-group"><span class="tb-label">View as</span><div class="seg" role="group" aria-label="View as">${[["rows", "Locations"], ["items", "Totals by item"]]
+        .map(([k, l]) => `<button type="button" class="seg-btn ${F.view === k ? "active" : ""}" aria-pressed="${F.view === k}" data-act="view" data-v="${k}">${l}</button>`).join("")}</div></div>
       ${showOwner() ? `<select id="sk-owner" aria-label="Property owner"><option value="">All owners</option><option value="__none" ${F.owner === "__none" ? "selected" : ""}>No owner</option>${ownerCodesInUse().map((o) => `<option value="${esc(o.code)}" ${sameOwner(F.owner, o.code) && F.owner ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select>` : ""}
       ${edit ? `<button type="button" class="btn-primary" data-act="receive">Receive</button>` : ""}
     </div>

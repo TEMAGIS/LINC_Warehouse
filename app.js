@@ -98,6 +98,36 @@ async function onReady({ me, profile }) {
       w.style.maxHeight = `${Math.max(220, window.innerHeight - top - 64)}px`;
     });
   };
+  // A small × in every search box (and Esc) to clear it without backspacing.
+  const addClearButtons = () => {
+    document.querySelectorAll('input[type="search"]:not([data-clr])').forEach((inp) => {
+      inp.dataset.clr = "1";
+      const wrap = document.createElement("span");
+      wrap.className = "clr-wrap";
+      inp.parentNode.insertBefore(wrap, inp);
+      wrap.appendChild(inp);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "clr-btn";
+      btn.setAttribute("aria-label", "Clear search");
+      btn.title = "Clear";
+      btn.textContent = "\u00d7";
+      btn.hidden = !inp.value;
+      wrap.appendChild(btn);
+      const clear = () => {
+        inp.value = ""; btn.hidden = true;
+        inp.dispatchEvent(new Event("input", { bubbles: true }));
+        inp.dispatchEvent(new Event("change", { bubbles: true }));
+        inp.focus();
+      };
+      inp.addEventListener("input", () => { btn.hidden = !inp.value; });
+      inp.addEventListener("keydown", (e) => { if (e.key === "Escape" && inp.value) { e.stopPropagation(); clear(); } });
+      btn.addEventListener("click", clear);
+    });
+  };
+  let clrQueued = false;
+  new MutationObserver(() => { if (clrQueued) return; clrQueued = true; requestAnimationFrame(() => { clrQueued = false; addClearButtons(); }); }).observe(document.body, { childList: true, subtree: true });
+  addClearButtons();
   let fitQueued = false;
   const queueFit = () => { if (fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitTables(); }); };
   new MutationObserver(queueFit).observe(document.body, { childList: true, subtree: true });
