@@ -105,8 +105,8 @@ function renderRows() {
         const oid = esc(rowOid(r));
         const acts = !canChange ? ""
           : isFlagged(r)
-            ? `<button type="button" class="link-btn" data-act="restore" data-oid="${oid}">Restore</button>`
-            : `<button type="button" class="link-btn" data-act="edit" data-oid="${oid}">Edit</button> <button type="button" class="link-btn" data-act="flag" data-oid="${oid}">Flag for delete</button>`;
+            ? `<button type="button" data-act="restore" data-oid="${oid}">Restore</button>`
+            : `<button type="button" data-act="edit" data-oid="${oid}">Edit</button> <button type="button" data-act="flag" data-oid="${oid}">Flag for delete</button>`;
         return `<tr class="${isFlagged(r) ? "row-inactive" : ""}">
           <td><span class="t">${esc(ci(r, "item") || "")}</span><div class="sub">${esc([ci(r, "make"), ci(r, "model")].filter(Boolean).join(" · "))}${ci(r, "size") ? " · " + esc(ci(r, "size")) : ""}</div>
             ${isFlagged(r) ? `<div class="sub">Flagged${ci(r, "flagged_by") ? " by " + esc(ci(r, "flagged_by")) : ""}${ci(r, "delete_reason") ? ": " + esc(ci(r, "delete_reason")) : ""}</div>` : ""}</td>

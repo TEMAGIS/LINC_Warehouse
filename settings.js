@@ -12,6 +12,7 @@ import { createShipmentsService, discoverShipments, loadShipments, addUsersTable
 import { loadUsers } from "./users.js";
 import { missingFields, addMissingFields, LABELS } from "./schemafix.js";
 import { ACCESS_LABEL, appItems, capsAccess, itemDetails, itemPageUrl, loadSelf, canEditFeatures, editProblems, memberGroupInfo, clearItemCache, cachedDetails, cachedSelf } from "./items.js";
+import { mountLibReview } from "./libreview.js";
 import { loadOwners, ownerSetup, ownerUsage, unownedCount, saveOwnerList, ownersActive, ownedList, sameOwner } from "./owners.js";
 
 const NEED = {
@@ -56,9 +57,7 @@ const sharingHtml = (d) => {
   if (d.groups === null) parts.push(`<span class="sub">Groups not visible to your account</span>`);
   else {
     for (const g of d.groups) {
-      const edit = g.updates === true ? " · members can edit" : g.updates === false ? " · view only" : "";
-      const you = g.role === "other" ? " · you're not in it" : " · you're in it";
-      parts.push(`<span class="tag ${g.updates === true ? "tag-ok" : ""}" title="${esc(g.title)}${esc(edit)}${esc(you)}">${esc(g.title)}${esc(edit)}${g.role === "other" ? " · not you" : ""}</span>`);
+      parts.push(`<span class="tag" title="${esc(g.title)}${g.role === "other" ? " · you're not in this group" : ""}">${esc(g.title)}${g.role === "other" ? " · not you" : ""}</span>`);
     }
     if (!d.groups.length && !parts.length) parts.push(`<span class="sub">Not shared with any group</span>`);
     else if (!d.groups.length) parts.push(`<span class="sub">No groups</span>`);
@@ -92,12 +91,10 @@ async function fillItems() {
       td.innerHTML = d.error ? `<span class="sub">—</span>` : `${esc(d.type)}<div class="sub">owner ${esc(d.owner)}</div>${mismatch ? `<div class="stock-out sub">This item's service isn't the layer the app reads. Check the item ID.</div>` : ""}`;
     });
   }));
-  const why = document.getElementById("apply-why");
-  if (why) {
-    const bal = items.find((i) => i.key === "bal");
-    const probs = editProblems({ d: bal && bal.id ? cachedDetails(bal.id) : null, self });
-    why.innerHTML = probs.length ? `<p class="sub"><strong>Likely causes, from what ArcGIS reports:</strong></p><ul class="why-list">${probs.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : "";
-  }
+  document.querySelectorAll("[data-why]").forEach((w) => {
+    const probs = editProblems({ d: cachedDetails(w.dataset.why) || null, self });
+    w.innerHTML = probs.length ? `<p class="sub"><strong>Likely causes, from what ArcGIS reports:</strong></p><ul class="why-list">${probs.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : `<p class="sub">ArcGIS didn't give a specific reason. Check the item's sharing and editing settings in ArcGIS Online.</p>`;
+  });
   const g = await memberGroupInfo();
   const gh = document.getElementById("set-group");
   if (gh && g) {
@@ -245,13 +242,44 @@ function ownersCard() {
     <p class="hint">Adding the table and fields needs the ArcGIS account that owns the layers (or an org administrator). If Transactions comes from a Survey123 form, add <code>property_owner</code> to the survey too, or republishing can remove it. Webhook mode and the old Survey123 form don't know about owners: what they write has no owner.</p></div>`;
 }
 
+/** Problems worth the admin's attention, each with an explanation and (where possible) a fix button. */
+function issues() {
+  const out = [];
+  const items = appItems();
+  for (const it of items) {
+    if (it.need !== "edit" || it.key === "ship") continue;
+    const a = capsAccess(it.caps);
+    if (!S.info[it.key]) out.push({ title: `Couldn't read ${it.label}`, body: "The app couldn't open this layer, so features that use it won't work. Check that the item ID in config.js is right and that the item is shared with you.", why: it.id });
+    else if (a.known && !a.edit) out.push({
+      title: `Your account can't edit ${it.label}`,
+      body: it.key === "bal" ? "ArcGIS reports view-only access for you, so transactions can't be applied to stock." : it.key === "txn" ? "ArcGIS reports view-only access for you, so you can't add receive, move or ship transactions." : "ArcGIS reports view-only access for you, so you can't add or change library items.",
+      why: it.id,
+    });
+  }
+  if (CONFIG.APPLY_MODE === "webhook" && !CONFIG.WEBHOOK_URL) out.push({ title: "Webhook URL isn't set", body: "APPLY_MODE is “webhook” but WEBHOOK_URL is empty in config.js, so transactions will stay Pending." });
+  if (!S.shipments.ready) out.push({ title: "Shipments service not found", body: "Shipment plans, the user list and property owners are stored in a small hosted service that hasn't been found yet. It needs an ArcGIS account that can publish content; afterwards share it with the same group as the inventory layers, with editing on.", actions: `<button type="button" class="btn-primary" data-act="create-ship">Create the shipments service</button> <button type="button" data-act="recheck">Check again</button>` });
+  else if (!S.usersReady) out.push({ title: "User list not set up", body: "Without the Users table, anyone who can open the layers gets in. Needs the account that owns the shipments service.", actions: `<button type="button" class="btn-primary" data-act="add-users">Add the Users table</button>` });
+  for (const r of schemaReport()) {
+    if (!r.known) out.push({ title: `Couldn't read the ${r.label} fields`, body: "The layer's field list couldn't be read." });
+    else if (r.missingRequired.length) out.push({ title: `${r.label} is missing required fields`, body: `Missing: ${r.missingRequired.map((n) => `<code>${esc(n)}</code>`).join(", ")}. The app can't work correctly until these exist (they come from the Survey123 form or the layer's design).`, raw: true });
+  }
+  const miss = missingFields();
+  if (Object.keys(miss).length) out.push({
+    title: "Some fields the app uses are missing",
+    body: `${Object.entries(miss).map(([k, f]) => `<strong>${esc(LABELS[k])}</strong>: ${f.map((x) => `<code>${esc(x.name)}</code>`).join(", ")}`).join("<br>")}<br><span class="hint">Adds fields only; nothing is changed or deleted. Needs the account that owns the layers (or an org administrator). If a layer comes from a Survey123 form, add the same fields to the survey too, or republishing can remove them.</span>`,
+    raw: true,
+    actions: `<button type="button" class="btn-primary" data-act="add-fields" data-key="all">Add all missing fields</button>`,
+  });
+  return out;
+}
+
 export function renderSettings() {
   const el = $("#screen-set");
   const lanes = picklineLanes();
   const rep = schemaReport();
-  const miss = missingFields();
   const ship = S.shipments;
   const items = appItems();
+  const list = issues();
   const itemRows = items.map((it) => `<tr>
       <td><span class="t">${esc(it.label)}</span><div class="sub">${esc(it.role)}</div></td>
       <td>${it.id ? `<span class="mono">${esc(it.id)}</span>` : `<span class="sub">${it.key === "ship" ? "Not found yet" : "Not set"}</span>`}</td>
@@ -259,61 +287,43 @@ export function renderSettings() {
       <td data-share="${esc(it.id)}">${it.id ? sharingHtml(cachedDetails(it.id)) : `<span class="sub">—</span>`}</td>
       <td>${accessHtml(it)}</td>
       <td>${it.id ? `<a href="${esc(itemPageUrl(it.id))}" target="_blank" rel="noopener">Open item</a>` : ""}</td></tr>`).join("");
-  const self = cachedSelf();
-  const balDetails = items.find((i) => i.key === "bal");
-  const probs = self && balDetails && balDetails.id ? editProblems({ d: cachedDetails(balDetails.id), self }) : [];
+  const issuesCard = list.length
+    ? `<div class="card set-wide issues-card"><h2>Needs attention <span class="tag tag-restricted">${list.length}</span></h2>
+        <ul class="issue-list">${list.map((i) => `<li class="issue"><strong>${esc(i.title)}</strong>
+          <p class="sub">${i.raw ? i.body : esc(i.body)}</p>
+          ${i.why ? `<div data-why="${esc(i.why)}"><span class="sub">Checking why…</span></div>` : ""}
+          ${i.actions ? `<div class="set-actions">${i.actions}</div>` : ""}</li>`).join("")}</ul></div>`
+    : `<div class="card set-wide"><h2>Setup check</h2><p class="stock-ok">✓ No problems found. Your account can edit the layers, the shipments service and user list are set up, and all required fields exist.</p></div>`;
   el.innerHTML = `
-    <p class="sub set-intro">Admin view. These checks read the live layers; nothing here changes inventory. Sharing and editing are changed in ArcGIS Online, not here.</p>
+    <p class="sub set-intro">Admin view. Nothing here changes inventory. Sharing and editing are changed in ArcGIS Online, not here.</p>
+    ${issuesCard}
     <div class="card set-wide"><h2>ArcGIS items and sharing</h2>
-      <p class="sub">The ArcGIS Online items this app reads and writes, and who they are shared with. Warehouse staff need <strong>edit</strong> access to Transactions and Inventory Balance (and the Barcode Library to add items): the item must be shared with a <em>shared update group</em> they belong to, with editing enabled on the item. “Your access” is what your own account can do today.</p>
+      <p class="sub">The ArcGIS Online items this app reads and writes, and who they are shared with. Warehouse staff need <strong>edit</strong> access to Transactions and Inventory Balance (and the Barcode Library to add items): the item must be shared with a group they belong to, with editing enabled on the item. “Your access” is what your own account can do today, and is the column to trust.</p>
       <p id="set-acct" class="set-acct"><span class="sub">Reading your ArcGIS account…</span></p>
       <div class="table-wrap"><table class="grid"><thead><tr><th>Item</th><th>Item ID</th><th>Type / owner</th><th>Shared with</th><th>Your access</th><th></th></tr></thead><tbody>${itemRows}</tbody></table></div>
       ${CONFIG.MEMBER_GROUP_ID ? `<p class="set-group-line"><span class="sub">“Add person” group:</span> <span id="set-group"><span class="sub">Loading…</span></span></p>` : ""}
       <div class="set-actions"><button type="button" data-act="recheck-sharing">Re-check sharing</button></div></div>
-    <div class="set-grid">
-      <div class="card"><h2>Applying to inventory</h2>
-        ${CONFIG.APPLY_MODE === "webhook"
-          ? (CONFIG.WEBHOOK_URL ? `<p class="stock-ok">Webhook mode: the app calls the Lambda after adding each transaction.</p>` : `<p class="stock-out">Webhook mode, but <code>WEBHOOK_URL</code> isn't set. Transactions will stay Pending.</p>`)
-          : `<p class="stock-ok">Browser mode: the app updates Inventory Balance itself, then marks the transaction Success or Error.</p>
-             <p class="${S.canEditBalance ? "sub" : "stock-out"}">${S.canEditBalance ? "Your account can edit Inventory Balance." : "ArcGIS reports that your account can only view Inventory Balance (its capabilities for you don't include Update or Editing), so nothing can be applied. A role in this app can't fix that; it has to be fixed in ArcGIS Online."}</p>
-             ${S.canEditBalance ? "" : `<div id="apply-why">${probs.length ? `<ul class="why-list">${probs.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : `<p class="sub">Checking why…</p>`}</div>`}`}
-      </div>
-      <div class="card"><h2>Your access</h2>
-        <p>${esc(S.role)} · ${S.canEdit ? "can add transactions and library items" : "view only"}${S.role !== "View only" && !S.layerCanEdit ? " (the ArcGIS account lacks edit access)" : ""}</p>
-        <p class="sub">${esc(S.me.name)} · ${esc(S.me.email)}</p>
-        ${ownersActive() ? `<p class="sub">${S.isAdmin ? "Property owners: all groups." : ownedList(S.myRow).length ? `Property owners: only ${esc(ownedList(S.myRow).map((c) => (S.owners.find((o) => sameOwner(o.code, c)) || { name: c }).name).join(", "))}.` : "Property owners: all groups (no group set for you)."}</p>` : ""}
-      </div>
-      ${ownersCard()}
-      <div class="card"><h2>Shipments service</h2>
-        ${ship.ready
-          ? `<p class="stock-ok">Found and ready.</p><p class="sub">${esc(ship.url)}</p>`
-          : `<p>Shipment plans (recipient, ship-to location, lines) are stored in a small hosted service. It hasn't been found yet.</p>
-             <div class="set-actions"><button type="button" class="btn-primary" data-act="create-ship">Create the shipments service</button><button type="button" data-act="recheck">Check again</button></div>
-             <p class="hint">Needs an ArcGIS account that can publish content. Afterwards, share it with the same group as the inventory layers, with editing on.</p>`}
-      </div>
-      ${ship.ready ? `<div class="card"><h2>User list</h2>
-        ${S.usersReady
-          ? `<p class="stock-ok">Users table found · ${S.users.length} ${S.users.length === 1 ? "person" : "people"}.</p><p class="sub">Only people on the list can open the app. Manage them on the Users tab.</p>`
-          : `<p>The Users table isn't in the shipments service yet, so anyone who can open the layers gets in. Add it to turn on the user list.</p>
-             <div class="set-actions"><button type="button" class="btn-primary" data-act="add-users">Add the Users table</button></div>
-             <p class="hint">Needs the account that owns the service. You'll be added as the first administrator if you're an Inventory Administrator in the Assigned Inventory Users layer.</p>`}
-      </div>` : ""}
-      <div class="card"><h2>Pick line</h2>
-        <p>Zone <code>${esc(CONFIG.PICKLINE.ZONE)}</code> · ${lanes.length} lane${lanes.length > 1 ? "s" : ""}</p>
-        <p class="sub">${lanes.map((l) => `${esc(l.label)} (scan ${esc(l.code)})`).join("<br>")}</p>
-        <p class="hint">Print location labels for each lane. To add lanes, raise <code>PICKLINE.LANES</code> in <code>config.js</code>.</p>
-      </div>
-      ${Object.keys(miss).length ? `<div class="card"><h2>Add missing fields</h2>
-        <p>The app uses fields these layers don't have yet:</p>
-        <p class="sub">${Object.entries(miss).map(([k, f]) => `<strong>${esc(LABELS[k])}</strong>: ${f.map((x) => `<code>${esc(x.name)}</code>`).join(", ")}`).join("<br>")}</p>
-        <div class="set-actions"><button type="button" class="btn-primary" data-act="add-fields" data-key="all">Add all missing fields</button></div>
-        <p class="hint">Adds fields only; nothing is changed or deleted. Needs the account that owns the layers (or an org administrator). If a layer comes from a Survey123 form, add the same fields to the survey too, or republishing it can remove them.</p>
-      </div>` : ""}
-      ${rep.map((r) => `<div class="card"><h2>${esc(r.label)} fields</h2>
-        ${!r.known ? `<p class="sub">Couldn't read the layer's fields.</p>`
-          : `${r.missingRequired.length ? `<p class="stock-out">Missing (required): ${r.missingRequired.map((n) => `<code>${esc(n)}</code>`).join(", ")}</p>` : `<p class="stock-ok">All required fields found.</p>`}
-             ${r.missingOptional.length ? `<p class="sub">Optional, not on the layer: ${r.missingOptional.map((n) => `<code>${esc(n)}</code>`).join(", ")}</p>` : ""}`}
-      </div>`).join("")}
-    </div>`;
+    ${ownersCard()}
+    <div id="lr-host" class="set-wide lr-host"></div>
+    <details class="card set-wide set-details"><summary>Status details</summary>
+      <div class="set-grid" style="margin-top:.8rem">
+        <div class="card"><h2>Your access</h2>
+          <p>${esc(S.role)} · ${S.canEdit ? "can add transactions and library items" : "view only"}${S.role !== "View only" && !S.layerCanEdit ? " (the ArcGIS account lacks edit access)" : ""}</p>
+          <p class="sub">${esc(S.me.name)} · ${esc(S.me.email)}</p>
+          ${ownersActive() ? `<p class="sub">${S.isAdmin ? "Property owners: all groups." : ownedList(S.myRow).length ? `Property owners: only ${esc(ownedList(S.myRow).map((c) => (S.owners.find((o) => sameOwner(o.code, c)) || { name: c }).name).join(", "))}.` : "Property owners: all groups (no group set for you)."}</p>` : ""}
+          <p class="sub">${CONFIG.APPLY_MODE === "webhook" ? "Applying: webhook mode." : "Applying: the app updates Inventory Balance itself (browser mode)."}</p></div>
+        <div class="card"><h2>Shipments service</h2>
+          ${ship.ready ? `<p class="stock-ok">Found and ready.</p><p class="sub">${esc(ship.url)}</p>` : `<p class="stock-out">Not found yet.</p>`}</div>
+        ${ship.ready ? `<div class="card"><h2>User list</h2>${S.usersReady ? `<p class="stock-ok">Users table found · ${S.users.length} ${S.users.length === 1 ? "person" : "people"}.</p><p class="sub">Only people on the list can open the app. Manage them on the Users tab.</p>` : `<p class="stock-out">Users table not set up.</p>`}</div>` : ""}
+        <div class="card"><h2>Pick line</h2>
+          <p>Zone <code>${esc(CONFIG.PICKLINE.ZONE)}</code> · ${lanes.length} lane${lanes.length > 1 ? "s" : ""}</p>
+          <p class="sub">${lanes.map((l) => `${esc(l.label)} (scan ${esc(l.code)})`).join("<br>")}</p>
+          <p class="hint">Print location labels for each lane. To add lanes, raise <code>PICKLINE.LANES</code> in <code>config.js</code>.</p></div>
+        ${rep.map((r) => `<div class="card"><h2>${esc(r.label)} fields</h2>
+          ${!r.known ? `<p class="sub">Couldn't read the layer's fields.</p>`
+            : `${r.missingRequired.length ? `<p class="stock-out">Missing (required): ${r.missingRequired.map((n) => `<code>${esc(n)}</code>`).join(", ")}</p>` : `<p class="stock-ok">All required fields found.</p>`}
+               ${r.missingOptional.length ? `<p class="sub">Optional, not on the layer: ${r.missingOptional.map((n) => `<code>${esc(n)}</code>`).join(", ")}</p>` : ""}`}</div>`).join("")}
+      </div></details>`;
+  mountLibReview();
   fillItems().catch((err) => console.info("Settings: item details unavailable:", err.message));
 }

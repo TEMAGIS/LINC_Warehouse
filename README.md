@@ -72,7 +72,11 @@ Some consumables are received and managed by different groups. Every stock row a
 
 ## Settings: ArcGIS items and sharing
 
-The first card lists each ArcGIS Online item the app uses (Inventory Balance, Transactions, Barcode Library, the shipments service, the Assigned Inventory Users layer): item ID, type and owner, the groups it is shared with (marked *members can edit* for shared update groups, and whether you are in them), and **what your account can do today** (from the layer's own capabilities). It also checks that each item ID is really the layer the app reads, shows your ArcGIS user type and whether your role includes **Edit features**, and the "Add person" group. *Applying to inventory* turns a red "can't edit Inventory Balance" into the likely causes: a role without Edit features, the item not shared with a shared update group, you not being in that group, or editing switched off on the item/view. Nothing there changes sharing; that is done in ArcGIS Online. `USERS_ITEM_ID` in `config.js` is the Assigned Inventory Users item (only used for this display).
+The first card lists each ArcGIS Online item the app uses (Inventory Balance, Transactions, Barcode Library, the shipments service, the Assigned Inventory Users layer): item ID, type and owner, the groups it is shared with (and whether you are in them), and **what your account can do today** (from the layer's own capabilities). It also checks that each item ID is really the layer the app reads, shows your ArcGIS user type and whether your role includes **Edit features**, and the "Add person" group. *Applying to inventory* turns a red "can't edit Inventory Balance" into the likely causes: a role without Edit features, the item not shared with any group, you not being in one, or editing switched off on the item/view. Nothing there changes sharing; that is done in ArcGIS Online. `USERS_ITEM_ID` in `config.js` is the Assigned Inventory Users item (only used for this display).
+
+## Settings: Barcode Library review
+
+Settings reads the live Barcode Library and lists suggested corrections to the unit and volume fields (`count_unit`, `units_per_pack`, `unit_volume`, `unit_volume_uom`; `gallons_per_count_unit` is worked out from them). It is the same logic as the one-off *volume cleanup* sheet: values are parsed from make / model / description and the old `volume` + `Volume_type`, and each suggestion is rated **High** (text agrees with the old volume), **Medium** (parsed or derived, check it) or **Review** (nothing reliable found, fill in by hand). Tick rows (High ones start ticked), edit any proposed value, then **Apply selected**. Only blank fields are filled; existing values are never overwritten, and nothing is written until you apply. **Download CSV** gives the same review sheet. It also lists possible duplicate barcodes (ignoring leading zeros) and records missing category, item or make, to fix by hand (use *Flag for delete* on the Library tab for duplicates). Applying needs edit access to the Barcode Library item. The logic is in `libreview.js`; re-run it any time with **Re-scan**.
 
 ## Voiding a stuck transaction
 
@@ -95,7 +99,7 @@ Some Error transactions can never apply (for example a bad quantity from the old
 index.html  app.css  app.js  config.js  lists.js
 state.js  data.js  loc.js  units.js  txn.js  balance.js
 widgets.js  scanner.js  library.js  dialogs.js  users.js  schemafix.js  libtab.js
-stock.js  pickline.js  shipments.js  transactions.js  settings.js  items.js  owners.js
+stock.js  pickline.js  shipments.js  transactions.js  settings.js  items.js  owners.js  libreview.js
 shared/  arcgis-auth.js  esri-client.js  session.js  ui.js  util.js  common.css   (TEMAzon's shared files)
 ```
 

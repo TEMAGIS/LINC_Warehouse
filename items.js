@@ -103,16 +103,11 @@ export function editProblems({ d, self }) {
   const groups = d.groups;
   const names = (a) => a.map((g) => g.title).join(", ");
   if (groups === null) out.push("The groups it is shared with aren't visible to your account.");
-  else if (!groups.length) out.push(`It isn't shared with any group (access: ${ACCESS_LABEL[d.access] || d.access || "unknown"}). Editing is granted through a shared update group that you belong to.`);
+  else if (!groups.length) out.push(`It isn't shared with any group (access: ${ACCESS_LABEL[d.access] || d.access || "unknown"}). Share it with the group that should be able to edit it.`);
   else {
-    const upd = groups.filter((g) => g.updates === true);
-    if (!upd.length && !groups.some((g) => g.updates === null))
-      out.push(`It is shared with ${names(groups)}, but none of those is a shared update group, so members can only view it. Share it with a group that has the “update items” capability (that is chosen when a group is created).`);
-    else if (upd.length) {
-      const mine = upd.filter((g) => g.role !== "other");
-      if (!mine.length) out.push(`It is shared with the update group ${names(upd)}, but you aren't a member. Ask the group owner to add you.`);
-      else out.push(`You're in the update group ${names(mine)}, so check that editing is switched on for the item itself (owner: item → Settings → Editing). A view of a layer needs editing enabled on the view, too.`);
-    } else out.push("Whether the groups it is shared with allow updates can't be read from here. Check them in ArcGIS Online.");
+    const mine = groups.filter((g) => g.role !== "other");
+    if (!mine.length) out.push(`It is shared with ${names(groups)}, but you aren't a member of any of them. Ask a group owner to add you.`);
+    else out.push(`You're in ${names(mine)}, so check that editing is switched on for the item itself (owner: item → Settings → Editing). If it is on and you still can't edit, ArcGIS may require the group to allow members to update items (a “shared update” group); the group's owner can confirm.`);
   }
   if (d.owner) out.push(`Item owner: ${d.owner}. They, or an organization administrator, can fix sharing and editing.`);
   return out;
