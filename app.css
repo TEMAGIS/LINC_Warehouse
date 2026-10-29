@@ -135,3 +135,7 @@
 .drawer .kv dd { margin: 0; }
 .timeline { list-style: none; margin: 0; padding: 0; }
 .timeline li { padding: 0.45rem 0; border-top: 1px solid #eceff2; }
+
+/* Item picker rows: title, then barcode / stock, then make-model or description on its own line */
+.ip-opt.ip-rich { display: block; text-align: left; }
+.ip-opt .ip-extra { display: block; margin-top: 0.1rem; }

@@ -16,7 +16,7 @@ import { toast, confirmDialog } from "./shared/ui.js";
 import { S } from "./state.js";
 import { ci, gallonsPerVolume } from "./units.js";
 import { loadLibrary } from "./data.js";
-import { COUNT_UNITS, PACK_UNITS, VOLUME_UOMS, VOLUME_ITEMS } from "./lists.js";
+import { COUNT_UNITS, PACK_UNITS, VOLUME_UOMS, VOLUME_ITEMS, LIB_ITEMS } from "./lists.js";
 
 const str = (v) => String(v ?? "").trim();
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
@@ -158,6 +158,28 @@ export function otherIssues(rows) {
   return { dups, missing };
 }
 
+
+// ---- items filed as "Other": suggest the closest item type from the list ---------------------
+const stemWord = (w) => String(w).toLowerCase().replace(/[^a-z0-9]/g, "").replace(/ies$/, "y").replace(/(xes|ches|shes|sses)$/, (m) => m.slice(0, -2)).replace(/s$/, "");
+const wordsOf = (t) => String(t).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+const ITEM_TYPES = LIB_ITEMS.filter((n) => !/^other$/i.test(n)).map((name) => ({ name, ws: wordsOf(name).map(stemWord).filter((w) => w.length > 1), compact: stemWord(name) }))
+  .filter((x) => x.compact.length >= 3).sort((a, b) => b.compact.length - a.compact.length);
+const isOtherItem = (r) => { const v = str(ci(r, "item")); return !v || /^other$/i.test(v); };
+
+/** For a library row filed as Other (or blank): the list item that its make / model / description names, if any. */
+export function suggestItem(row) {
+  if (!isOtherItem(row)) return null;
+  const text = [ci(row, "make"), ci(row, "model"), ci(row, "description")].map(str).join(" ");
+  const tw = new Set(wordsOf(text).map(stemWord));
+  const compact = text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  let hit = ITEM_TYPES.find((x) => x.ws.length && x.ws.every((w) => tw.has(w)));
+  let how = "word";
+  if (!hit) { hit = ITEM_TYPES.find((x) => x.compact.length >= 5 && compact.includes(x.compact)); how = "text"; }
+  return { oid: row._oid, row, item: hit ? hit.name : "", confidence: hit ? (how === "word" && hit.compact.length >= 4 ? "High" : "Medium") : "Review", why: hit ? `text mentions “${hit.name}”` : "no matching item type found" };
+}
+
+export const otherItems = () => S.library.filter((r) => str(ci(r, "delete_flag")).toLowerCase() !== "yes").map(suggestItem).filter(Boolean);
+
 export const reviewAll = () => S.library.filter((r) => str(ci(r, "delete_flag")).toLowerCase() !== "yes").map(suggest).filter(Boolean);
 
 // ---- UI -------------------------------------------------------------------------------------
@@ -170,6 +192,55 @@ const galOf = (e) => (num(e.unit_volume) > 0 && e.unit_volume_uom ? round(gal(nu
 const tagClass = { High: "tag-ok", Medium: "", Review: "tag-restricted" };
 
 let list = [];
+const OT = { filter: "found", q: "", page: 1, picked: new Set(), edits: new Map(), seeded: false };
+let otList = [];
+const otItem = (x) => (OT.edits.has(x.oid) ? OT.edits.get(x.oid) : x.item);
+
+function otherHtml() {
+  otList = otherItems();
+  if (!otList.length) return "";
+  if (!OT.seeded) { otList.forEach((x) => { if (x.confidence === "High") OT.picked.add(x.oid); }); OT.seeded = true; }
+  const oids = new Set(otList.map((x) => x.oid));
+  for (const o of [...OT.picked]) if (!oids.has(o)) OT.picked.delete(o);
+  const found = otList.filter((x) => x.item).length;
+  const q = OT.q.toLowerCase();
+  const shown = otList.filter((x) => (OT.filter === "all" || x.item) && (!q || `${ci(x.row, "make")} ${ci(x.row, "model")} ${ci(x.row, "barcode")} ${ci(x.row, "description")}`.toLowerCase().includes(q)));
+  const upd = canUpdate();
+  return `<div class="card"><h2>Items filed as “Other”</h2>
+    <p class="sub">${otList.length} library item${otList.length === 1 ? "" : "s"} use the item type <strong>Other</strong>, which makes them hard to find in searches and lists. For ${found} of them the make, model or description names a real item type. Pick the right type from the list (the same list the Library edit form uses) and press <strong>Apply</strong>. Only the item type changes; make, model and units are left alone.</p>
+    ${upd ? "" : `<p class="banner banner-warn">Your account can't edit the Barcode Library, so these can be viewed but not applied.</p>`}
+    <div class="toolbar">
+      <input id="ot-q" type="search" placeholder="Make, model, barcode" value="${esc(OT.q)}" aria-label="Search items filed as Other" />
+      <select id="ot-filter" aria-label="Show"><option value="found" ${OT.filter === "found" ? "selected" : ""}>With a suggestion (${found})</option><option value="all" ${OT.filter === "all" ? "selected" : ""}>All (${otList.length})</option></select>
+      <button type="button" data-ot="sel-high" ${upd ? "" : "disabled"}>Tick all High</button>
+      <button type="button" data-ot="sel-none">Untick all</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn-primary" data-ot="apply" ${upd && OT.picked.size ? "" : "disabled"}>Apply selected (${OT.picked.size})</button></div>
+    <div class="table-wrap tall"><table class="grid lr-grid"><thead><tr><th></th><th>Item</th><th>Item type</th><th>Why</th></tr></thead><tbody>${
+      shown.slice(0, OT.page * PAGE).map((x) => `<tr data-ot-oid="${esc(x.oid)}">
+        <td><input type="checkbox" data-ot="pick" ${OT.picked.has(x.oid) ? "checked" : ""} ${upd ? "" : "disabled"} aria-label="Apply" /></td>
+        <td><span class="t">${esc([ci(x.row, "make"), ci(x.row, "model")].map(str).filter(Boolean).join(" · ") || "(no make / model)")}</span><div class="sub"><span class="mono">${esc(str(ci(x.row, "barcode")))}</span>${str(ci(x.row, "description")) ? " · " + esc(str(ci(x.row, "description"))) : ""}</div></td>
+        <td class="lr-edit"><select data-ot="item" aria-label="Item type"><option value="">Other (leave as is)</option>${LIB_ITEMS.filter((n) => !/^other$/i.test(n)).map((n) => `<option ${otItem(x) === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></td>
+        <td><span class="tag ${tagClass[x.confidence]}">${x.confidence}</span><div class="sub">${esc(x.why)}</div></td></tr>`).join("") || `<tr><td colspan="4" class="empty">Nothing matches.</td></tr>`}</tbody></table></div>
+    <div class="sub" style="margin:.4rem 0">${shown.length} shown${shown.length > OT.page * PAGE ? ` · <button type="button" class="link-btn" data-ot="more">Show more</button>` : ""}</div></div>`;
+}
+
+async function applyOther(btn) {
+  const chosen = otList.filter((x) => OT.picked.has(x.oid));
+  const key = (S.info.lib && S.info.lib.objectIdField) || "OBJECTID";
+  const updates = chosen.filter((x) => otItem(x)).map((x) => ({ attributes: fitLib({ [key]: x.oid, item: otItem(x) }) }));
+  if (!updates.length) return toast("Pick an item type for the ticked rows first.", "error");
+  const ok = await confirmDialog({ title: `Change the item type of ${updates.length} library item${updates.length === 1 ? "" : "s"}?`, message: "This writes the chosen item type to the Barcode Library. Nothing else about those items changes.", confirmLabel: "Apply" });
+  if (!ok) return;
+  btn.disabled = true;
+  try {
+    for (let i = 0; i < updates.length; i += 100) await applyEdits(S.urls.lib, { updates: updates.slice(i, i + 100) });
+    await loadLibrary();
+    OT.edits.clear(); OT.picked.clear();
+    toast(`Updated ${updates.length} item${updates.length === 1 ? "" : "s"}.`, "success");
+  } catch (err) { toast(`Couldn't update the library: ${err.message}`, "error", 10000); }
+  paint();
+}
 
 function rowHtml(s) {
   const e = effective(s);
@@ -225,7 +296,7 @@ function paint() {
       ${dups.length ? `<h3>Possible duplicate barcodes</h3><p class="hint">Same barcode (ignoring leading zeros) on more than one record. Keep one and use Flag for delete on the Library tab for the others. Stock and history keep working.</p>
         <ul class="lr-dups">${dups.map((g) => `<li><span class="mono">${esc(str(ci(g[0], "barcode")))}</span>: ${g.map((r) => `${esc([ci(r, "make"), ci(r, "model"), ci(r, "item")].map(str).filter(Boolean).join(" "))} <span class="sub">(#${esc(r._oid)}${str(ci(r, "barcode")) !== str(ci(g[0], "barcode")) ? ", " + esc(str(ci(r, "barcode"))) : ""})</span>`).join(" · ")}</li>`).join("")}</ul>` : ""}
       ${missing.length ? `<h3>Missing category, item or make</h3><ul class="lr-dups">${missing.slice(0, 50).map((r) => `<li><span class="mono">${esc(str(ci(r, "barcode")))}</span> ${esc([ci(r, "make"), ci(r, "model"), ci(r, "item")].map(str).filter(Boolean).join(" ") || "(blank)")} <span class="sub">missing ${[!str(ci(r, "item_category")) && "category", !str(ci(r, "item")) && "item", !str(ci(r, "make")) && "make"].filter(Boolean).join(", ")}</span></li>`).join("")}${missing.length > 50 ? `<li class="sub">…and ${missing.length - 50} more</li>` : ""}</ul>` : ""}
-    </details>` : ""}</div>`;
+    </details>` : ""}</div>${otherHtml()}`;
 }
 
 function fitLib(attrs) {
@@ -306,6 +377,31 @@ export function mountLibReview() {
       const g = galOf(e2); const cell = tr.querySelector(`#lr-gal-${CSS.escape(String(s.oid))}`); if (cell) cell.textContent = g ? g : "";
       if (!UI.picked.has(s.oid)) { UI.picked.add(s.oid); const cb = tr.querySelector('[data-lr="pick"]'); if (cb && !cb.disabled) cb.checked = true; const b = host.querySelector('[data-lr="apply"]'); if (b) { b.textContent = `Apply selected (${UI.picked.size})`; b.disabled = !canUpdate(); } }
     });
+    // "Items filed as Other" section
+    host.addEventListener("input", debounce((e) => { if (e.target.id === "ot-q") { OT.q = e.target.value; OT.page = 1; paint(); const el = $("#ot-q"); if (el) { el.focus(); el.setSelectionRange(OT.q.length, OT.q.length); } } }, 250));
+    host.addEventListener("change", (e) => {
+      const t = e.target;
+      if (t.id === "ot-filter") { OT.filter = t.value; OT.page = 1; return paint(); }
+      const tr = t.closest("tr[data-ot-oid]");
+      if (!tr) return;
+      const oid = Number(tr.dataset.otOid);
+      const refreshBtn = () => { const b = host.querySelector('[data-ot="apply"]'); if (b) { b.textContent = `Apply selected (${OT.picked.size})`; b.disabled = !canUpdate() || !OT.picked.size; } };
+      if (t.dataset.ot === "pick") { t.checked ? OT.picked.add(oid) : OT.picked.delete(oid); refreshBtn(); }
+      else if (t.dataset.ot === "item") {
+        OT.edits.set(oid, t.value);
+        if (t.value) { OT.picked.add(oid); const cb = tr.querySelector('[data-ot="pick"]'); if (cb && !cb.disabled) cb.checked = true; } else { OT.picked.delete(oid); const cb = tr.querySelector('[data-ot="pick"]'); if (cb) cb.checked = false; }
+        refreshBtn();
+      }
+    });
+    host.addEventListener("click", async (e) => {
+      const b = e.target.closest("button[data-ot]");
+      if (!b) return;
+      const a = b.dataset.ot;
+      if (a === "sel-high") { otList.filter((x) => x.confidence === "High").forEach((x) => OT.picked.add(x.oid)); paint(); }
+      else if (a === "sel-none") { OT.picked.clear(); paint(); }
+      else if (a === "more") { OT.page += 1; paint(); }
+      else if (a === "apply") await applyOther(b);
+    });
     host.addEventListener("click", async (e) => {
       const b = e.target.closest("button[data-lr]");
       if (!b) return;
@@ -316,7 +412,7 @@ export function mountLibReview() {
       else if (a === "csv") exportCsv();
       else if (a === "rescan") {
         b.disabled = true;
-        try { await loadLibrary(); UI.seeded = false; UI.picked.clear(); UI.edits.clear(); } catch (err) { toast(err.message, "error"); }
+        try { await loadLibrary(); UI.seeded = false; UI.picked.clear(); UI.edits.clear(); OT.seeded = false; OT.picked.clear(); OT.edits.clear(); } catch (err) { toast(err.message, "error"); }
         paint();
       } else if (a === "apply") await apply(b);
     });

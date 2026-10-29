@@ -2,7 +2,7 @@
 // Small reusable pieces for the dialogs: scan boxes and the item picker.
 // ---------------------------------------------------------------------------
 import { esc } from "./shared/util.js";
-import { S, findLib, normSku, itemName } from "./state.js";
+import { S, findLib, normSku, itemName, itemParts } from "./state.js";
 import { ci, unitLabel, fmtNum } from "./units.js";
 import { scanOnce } from "./scanner.js";
 import { openAddToLibrary, libTitle } from "./library.js";
@@ -59,6 +59,14 @@ export function stockItems() {
  * mode "stock": only items with stock on hand.
  * host: element to render into. onPick({sku, lib, name}) fires on choice.
  */
+/** How an item shows in the picker: generic names ("Other") lead with make / model, with the description underneath. */
+function pickLabel(f) {
+  const lib = f.lib || findLib(f.sku);
+  const p = itemParts({ item: f.name, item_sku: f.sku }, lib);
+  const extra = [p.generic ? p.name : p.mm, p.desc].filter(Boolean).join(" · ");
+  return { title: p.title, sub: [f.sku, f.qty != null ? `${fmtNum(f.qty)} in stock` : "", lib ? unitLabel(lib) : ""].filter(Boolean).join(" · "), extra };
+}
+
 export function itemPicker(host, { mode = "library", onPick = () => {}, label = "Item" } = {}) {
   const uid = "ip" + Math.random().toString(36).slice(2, 7);
   host.innerHTML = `
@@ -77,8 +85,8 @@ export function itemPicker(host, { mode = "library", onPick = () => {}, label = 
     current = p;
     res.innerHTML = "";
     picked.hidden = false;
-    const sub = [p.sku, p.lib ? unitLabel(p.lib) : ""].filter(Boolean).join(" · ");
-    picked.innerHTML = `<div><strong>${esc(p.name)}</strong><div class="sub">${esc(sub)}</div></div><button type="button" data-ip-change>Change</button>`;
+    const L = pickLabel(p);
+    picked.innerHTML = `<div><strong>${esc(L.title)}</strong><div class="sub">${esc([p.sku, p.lib ? unitLabel(p.lib) : ""].filter(Boolean).join(" · "))}</div>${L.extra ? `<div class="sub">${esc(L.extra)}</div>` : ""}</div><button type="button" data-ip-change>Change</button>`;
     input.closest("label").hidden = true;
     onPick(p);
   };
@@ -111,7 +119,7 @@ export function itemPicker(host, { mode = "library", onPick = () => {}, label = 
     let found = [];
     if (mode === "stock") {
       found = stockItems()
-        .filter((s) => ws.every((w) => `${s.name} ${s.sku}`.toLowerCase().includes(w)))
+        .filter((s) => { const l = findLib(s.sku); const hay = `${s.name} ${s.sku} ${l ? [ci(l, "make"), ci(l, "model"), ci(l, "description")].join(" ") : ""}`.toLowerCase(); return ws.every((w) => hay.includes(w)); })
         .map((s) => ({ sku: s.sku, lib: findLib(s.sku), name: s.name, qty: s.qty }));
     } else {
       found = S.library
@@ -119,11 +127,16 @@ export function itemPicker(host, { mode = "library", onPick = () => {}, label = 
         .filter((r) => ws.every((w) => [ci(r, "item"), ci(r, "make"), ci(r, "model"), ci(r, "description"), ci(r, "barcode")].join(" ").toLowerCase().includes(w)))
         .map(fromLib);
     }
+    // best matches first: whole-word / starts-with hits on the title before loose ones
+    const first = ws[0] || "";
+    const rank = (f) => { const t = pickLabel(f).title.toLowerCase(); return t.startsWith(first) ? 0 : t.includes(first) ? 1 : 2; };
+    found.sort((a, b) => rank(a) - rank(b) || pickLabel(a).title.localeCompare(pickLabel(b).title));
+    const more = Math.max(0, found.length - 8);
     found = found.slice(0, 8);
     if (found.length) {
       res.innerHTML = found
-        .map((f, i) => `<button type="button" class="ip-opt" data-i="${i}" role="option"><strong>${esc(f.name)}</strong> <span class="sub">${esc(f.sku)}${f.qty != null ? ` · ${fmtNum(f.qty)} in stock` : ""}</span></button>`)
-        .join("");
+        .map((f, i) => { const L = pickLabel(f); return `<button type="button" class="ip-opt ip-rich" data-i="${i}" role="option"><span><strong>${esc(L.title)}</strong> <span class="sub">${esc(L.sub)}</span>${L.extra ? `<span class="sub ip-extra">${esc(L.extra)}</span>` : ""}</span></button>`; })
+        .join("") + (more ? `<div class="sub">${more} more. Keep typing to narrow it down.</div>` : "");
       res.onclick = (e) => {
         const b = e.target.closest("[data-i]");
         if (b) choose(found[Number(b.dataset.i)]);

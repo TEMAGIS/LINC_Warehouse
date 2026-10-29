@@ -98,10 +98,6 @@ function render() {
       </header>
       <div class="body">
         ${edit ? `<div class="drawer-actions"><button type="button" class="btn-primary" data-d="receive">Receive more</button>${staged < total ? `<button type="button" data-d="stage">Stage to pick line</button>` : ""}</div>` : ""}
-        <div class="card">
-          <div class="dr-total"><span class="dr-num">${fmtNum(total)}</span> <span class="sub">${esc(unit)} on hand${gal > 0 ? ` · ≈ ${fmtGallons(gal)} gal` : ""}</span></div>
-          <table class="mini-table"><thead><tr><th>Where</th><th class="num">Qty</th><th></th></tr></thead><tbody>${onHandRows}</tbody></table>
-        </div>
         <div class="card ship">
           <div class="sub" style="margin-bottom:.3rem">SHIPPING</div>
           <div>${fmtNum(staged)} on the pick line · ${fmtNum(promised)} promised to open plans</div>
@@ -121,6 +117,10 @@ function render() {
             ${detail("Size", ci(lib, "size"))}
           </dl>
           ${lib ? (edit && libCanUpdate() ? `<button type="button" class="btn-sm" data-d="edit" style="margin-top:.6rem">Edit details</button>` : "") : `<p class="sub">This barcode isn't in the Barcode Library yet.</p>`}
+        </div>
+        <div class="card">
+          <div class="dr-total"><span class="dr-num">${fmtNum(total)}</span> <span class="sub">${esc(unit)} on hand${gal > 0 ? ` · ≈ ${fmtGallons(gal)} gal` : ""}</span></div>
+          <table class="mini-table"><thead><tr><th>Where</th><th class="num">Qty</th><th></th></tr></thead><tbody>${onHandRows}</tbody></table>
         </div>
         <h3>History</h3>
         ${histHtml}
