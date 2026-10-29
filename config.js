@@ -21,9 +21,9 @@ export const CONFIG = {
 
   // --- ArcGIS Online item IDs of the data (same layers the field app and Lookup page use) ---
   ITEM_IDS: {
-    transactions: "6dfb43b544cb4d2bb4a13e2b1187b5f5", // LINC_Transactions (Survey123 table/layer)
-    balance: "812418a81b474a4fbc2247d2fbd44061",      // LINC Inventory Balance
-    library: "426fb0b37352474cbb6c38d5335e275b",      // Barcode Library
+    transactions: "3481accef6df444c8174272cb0363500", // LINC_Transactions (the EDITABLE layer; the old 6dfb43b5… item is a view-only copy)
+    balance: "d9c39c68e79047c38263ec7014198bfb",      // LINC Inventory Balance (the EDITABLE layer; the old 812418a8… item is a view-only copy)
+    library: "2d5dbbe0ec8e4f958aa20ed06ec505bc",      // Barcode Library (the EDITABLE layer; the old 426fb0b3… item is a view-only copy)
   },
 
   // Users layer of the Assigned Inventory Console. Only used to recognise Inventory
