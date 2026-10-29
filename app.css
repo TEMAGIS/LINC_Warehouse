@@ -153,3 +153,17 @@
 .pl-direct { padding: 0.9rem; }
 .pl-direct .two-col { margin-top: 0.4rem; }
 .pl-direct #dr-add { margin-top: 0.6rem; }
+
+/* Item panel: total for everything with the same item name */
+.dr-group { border: 1px solid var(--border); border-radius: var(--radius, 8px); background: #fafbfd; padding: 0.5rem 0.75rem; margin-bottom: 0.8rem; }
+.dr-group summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.5rem; }
+.dr-gnum { font-size: 1.15rem; font-weight: 700; color: var(--navy, #002868); }
+.dr-glist { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.dr-glist li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid #eceff2; }
+.dr-glist button { padding: 0.15rem 0.5rem; font-size: 0.8rem; }
+
+/* Stock tab: Totals by item view */
+.caret { display: inline-block; width: 1rem; color: var(--muted); }
+.grid tr.sub-row td { background: #fafbfd; }
+.grid td.indent { padding-left: 2.2rem; }
+.grid tfoot td { position: sticky; bottom: 0; background: #eef1f5; border-top: 2px solid var(--border); }

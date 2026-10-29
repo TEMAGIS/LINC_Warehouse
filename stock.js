@@ -4,7 +4,7 @@
 // ---------------------------------------------------------------------------
 import { CONFIG } from "./config.js";
 import { $, esc, debounce, fmtDateTime } from "./shared/util.js";
-import { S, itemName, itemCell, findLib, normSku } from "./state.js";
+import { S, itemName, itemParts, itemCell, findLib, normSku } from "./state.js";
 import { balanceCode, codeLabel, cleanScan, isPicklineRow, SEG_LABELS } from "./loc.js";
 import { onHand } from "./data.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
@@ -15,7 +15,7 @@ import { openDrawer } from "./drawer.js";
 import { openModal, toast } from "./shared/ui.js";
 import { ownersActive, canActOn, ownerName, ownerCodesInUse, sameOwner, setStockOwner } from "./owners.js";
 
-const F = { q: "", scope: "all", owner: "", page: 1 };
+const F = { q: "", scope: "all", owner: "", page: 1, view: "rows", open: new Set() };
 const showOwner = () => ownersActive() || S.balances.some((r) => String(r.property_owner || "").trim());
 
 /** Rows after search + scope. A query that matches any location code is a LOCATION search
@@ -44,6 +44,8 @@ export function initStock() {
   el.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-act]");
     if (!b) {
+      const g = e.target.closest("tr[data-grp]");
+      if (g) { const k = g.dataset.grp; F.open.has(k) ? F.open.delete(k) : F.open.add(k); renderRows(); return; }
       const tr = e.target.closest("tr[data-sku]");
       if (tr && !e.target.closest("button, a, input, select")) openDrawer(tr.dataset.sku);
       return;
@@ -53,6 +55,7 @@ export function initStock() {
     else if (a === "move") openMove();
     else if (a === "stage") openStage();
     else if (a === "addlib") openAddToLibrary({});
+    else if (a === "view") { F.view = b.dataset.v; F.page = 1; renderStock(); }
     else if (a === "scope") { F.scope = b.dataset.s; F.page = 1; renderStock(); }
     else if (a === "more") { F.page += 1; renderRows(); }
     else if (a === "rowmove") openMove({ from: b.dataset.code, sku: b.dataset.sku, lot: b.dataset.lot });
@@ -88,6 +91,8 @@ export function renderStock() {
       <button type="button" data-act="scan">Scan</button>
       <div class="pill-row">${[["all", "All"], ["storage", "Storage"], ["pick", "Pick line"]]
         .map(([k, l]) => `<button type="button" class="pill ${F.scope === k ? "active" : ""}" data-act="scope" data-s="${k}">${l}</button>`).join("")}</div>
+      <div class="pill-row" role="group" aria-label="View">${[["rows", "By location"], ["items", "Totals by item"]]
+        .map(([k, l]) => `<button type="button" class="pill ${F.view === k ? "active" : ""}" data-act="view" data-v="${k}">${l}</button>`).join("")}</div>
       <span class="spacer"></span>
       ${showOwner() ? `<select id="sk-owner" aria-label="Property owner"><option value="">All owners</option><option value="__none" ${F.owner === "__none" ? "selected" : ""}>No owner</option>${ownerCodesInUse().map((o) => `<option value="${esc(o.code)}" ${sameOwner(F.owner, o.code) && F.owner ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select>` : ""}
       ${edit ? `<button type="button" data-act="addlib">Add to library</button>
@@ -100,10 +105,45 @@ export function renderStock() {
 }
 
 
+/** "Totals by item": every item name with its total (all brands, sizes and barcodes), expandable to the barcodes. */
+function renderItemTotals(host, rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    const sku = normSku(r.item_sku);
+    const lib = findLib(r.item_sku);
+    const ip = itemParts(r, lib);
+    // generic names ("Other") don't add up to anything, so each barcode stands alone
+    const key = ip.generic ? `${ip.name.toLowerCase()}|${sku}` : ip.name.toLowerCase();
+    const g = groups.get(key) || { key, title: ip.generic ? ip.mm : ip.name, tag: ip.generic ? ip.name : "", skus: new Map(), qty: 0, pick: 0, gal: 0 };
+    const q = onHand(r);
+    g.qty += q; if (isPicklineRow(r)) g.pick += q; g.gal += gallonsFor(lib, q);
+    const e = g.skus.get(sku) || { sku, title: ip.generic ? ip.mm : ip.mm || ip.title, name: ip.title, qty: 0, pick: 0 };
+    e.qty += q; if (isPicklineRow(r)) e.pick += q;
+    g.skus.set(sku, e);
+    groups.set(key, g);
+  }
+  const list = [...groups.values()].sort((a, b) => a.title.localeCompare(b.title));
+  const tot = list.reduce((n, g) => n + g.qty, 0), totPick = list.reduce((n, g) => n + g.pick, 0), totGal = list.reduce((n, g) => n + g.gal, 0);
+  const body = list.length ? list.map((g) => {
+    const open = F.open.has(g.key);
+    const many = g.skus.size > 1;
+    const head = `<tr class="${many ? "row-click" : "row-click"}" ${many ? `data-grp="${esc(g.key)}"` : `data-sku="${esc([...g.skus.keys()][0])}"`}>
+      <td>${many ? `<span class="caret">${open ? "▾" : "▸"}</span> ` : ""}<span class="t">${esc(g.title)}</span>${g.tag ? ` <span class="tag">${esc(g.tag)}</span>` : ""}<div class="sub">${g.skus.size} item${g.skus.size === 1 ? "" : "s"}${g.skus.size === 1 ? " · " + esc([...g.skus.keys()][0]) : ""}</div></td>
+      <td class="num oh"><span class="oh-q">${fmtNum(g.qty)}</span>${g.gal > 0 ? `<div class="sub">≈ ${fmtGallons(g.gal)} gal</div>` : ""}</td>
+      <td class="num">${fmtNum(g.qty - g.pick)}</td><td class="num">${fmtNum(g.pick)}</td></tr>`;
+    const subs = many && open ? [...g.skus.values()].sort((a, b) => b.qty - a.qty).map((e) => `<tr class="row-click sub-row" data-sku="${esc(e.sku)}"><td class="indent"><span class="t">${esc(e.title)}</span><div class="sub">${esc(e.sku)}</div></td><td class="num">${fmtNum(e.qty)}</td><td class="num">${fmtNum(e.qty - e.pick)}</td><td class="num">${fmtNum(e.pick)}</td></tr>`).join("") : "";
+    return head + subs;
+  }).join("") : `<tr><td colspan="4" class="empty">${S.balances.length ? "Nothing matches that search." : "No stock recorded yet."}</td></tr>`;
+  host.innerHTML = `<div class="table-wrap tall"><table class="grid"><thead><tr><th>Item</th><th class="num oh-h">Total on hand</th><th class="num">In storage</th><th class="num">On the pick line</th></tr></thead><tbody>${body}</tbody>
+    <tfoot><tr><td><b>Total</b></td><td class="num"><b>${fmtNum(tot)}</b>${totGal > 0 ? `<div class="sub">≈ ${fmtGallons(totGal)} gal</div>` : ""}</td><td class="num"><b>${fmtNum(tot - totPick)}</b></td><td class="num"><b>${fmtNum(totPick)}</b></td></tr></tfoot></table></div>
+    <div class="sub" style="margin:.5rem 0">${fmtNum(list.length)} item name${list.length === 1 ? "" : "s"}. Click a name with a ▸ to see its barcodes; click a barcode to open it.</div>`;
+}
+
 function renderRows() {
   const host = $("#sk-table");
   if (!host) return;
   const rows = filterRows(S.balances, F).sort((a, b) => balanceCode(a).localeCompare(balanceCode(b), undefined, { numeric: true }) || itemName(a).localeCompare(itemName(b)));
+  if (F.view === "items") return renderItemTotals(host, rows);
   const shown = rows.slice(0, F.page * CONFIG.ROWS_PER_PAGE);
   const edit = S.canEdit;
   const body = shown.length

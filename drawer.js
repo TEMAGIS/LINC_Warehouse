@@ -1,18 +1,17 @@
 // ---------------------------------------------------------------------------
 // Item panel (opens from a row on the Stock tab): where the item is and how much, Receive / Move /
-// Stage right there, what's promised to shipment plans (with a way to add it to one), the library
+// Stage right there, the library
 // details, and the item's recent history. Everything it does reuses the dialogs the rest of the app uses.
 // ---------------------------------------------------------------------------
 import { CONFIG } from "./config.js";
 import { $, esc, fmtDateTime } from "./shared/util.js";
-import { S, itemParts, findLib, normSku } from "./state.js";
+import { S, itemParts, itemName, findLib, normSku } from "./state.js";
 import { balanceCode, codeLabel, isPicklineRow } from "./loc.js";
 import { onHand } from "./data.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel, ci } from "./units.js";
 import { openReceive, openMove, openStage } from "./dialogs.js";
 import { ownersActive, canActOn, ownerName } from "./owners.js";
-import { OPEN_STATUSES, linesOf, plannedQty } from "./shipments.js";
-import { openPlan } from "./pickline.js";
+import { plannedQty } from "./shipments.js";
 import { openEditDialog, libCanUpdate } from "./libtab.js";
 import { openSetOwner } from "./stock.js";
 
@@ -59,13 +58,25 @@ function render() {
   const gal = gallonsFor(lib, total);
   const edit = S.canEdit;
 
+  // Total for everything with the same item name (all brands, sizes and barcodes): "Total Water", "Total Cat Treats".
+  let grp = null;
+  if (!p.generic) {
+    const key = p.name.trim().toLowerCase();
+    const bySku = new Map();
+    for (const r of S.balances) {
+      if (itemName(r).trim().toLowerCase() !== key || onHand(r) <= 0) continue;
+      const k = normSku(r.item_sku);
+      const e = bySku.get(k) || { sku: k, row: r, qty: 0, staged: 0, gal: 0 };
+      e.qty += onHand(r);
+      if (isPicklineRow(r)) e.staged += onHand(r);
+      e.gal += gallonsFor(findLib(k), onHand(r));
+      bySku.set(k, e);
+    }
+    const list = [...bySku.values()].sort((a, b) => b.qty - a.qty);
+    if (list.length) grp = { name: p.name, list, qty: list.reduce((n, e) => n + e.qty, 0), staged: list.reduce((n, e) => n + e.staged, 0), gal: list.reduce((n, e) => n + e.gal, 0) };
+  }
+
   const promised = rows.reduce((n, r) => n + plannedQty(r.item_sku, balanceCode(r), r.lot_number, ownersActive() ? { owner: String(r.property_owner || "") } : {}), 0);
-  const plans = (S.shipments.headers || []).filter((h) => OPEN_STATUSES.includes(h.status)).map((h) => ({
-    h,
-    qty: linesOf(h.shipment_id).filter((l) => l.status !== "Shipped" && normSku(l.item_sku) === sku).reduce((n, l) => n + Number(l.quantity) - (Number(l.qty_shipped) || 0), 0),
-  }));
-  const inPlans = plans.filter((x) => x.qty > 0);
-  const canPlan = edit && S.shipments.ready;
 
   const onHandRows = rows.length
     ? rows.map((r) => {
@@ -103,22 +114,14 @@ function render() {
           <div class="dr-stat"><span class="dr-num sm">${fmtNum(staged)}</span><span class="sub">on the pick line</span></div>
           <div class="dr-stat"><span class="dr-num sm">${fmtNum(promised)}</span><span class="sub">promised to plans</span></div>
         </div>
+        ${grp ? `<details class="dr-group"><summary><b>Total ${esc(grp.name)}</b> <span class="dr-gnum">${fmtNum(grp.qty)}</span> <span class="sub">across ${grp.list.length} item${grp.list.length === 1 ? "" : "s"} · ${fmtNum(grp.staged)} on the pick line${grp.gal > 0 ? ` · ≈ ${fmtGallons(grp.gal)} gal` : ""}</span></summary>
+          <ul class="dr-glist">${grp.list.map((e) => { const ip = itemParts(e.row, findLib(e.sku)); return `<li><span><b>${esc(ip.mm || ip.title)}</b> <span class="sub">${esc(e.sku)}</span></span><span>${fmtNum(e.qty)}${e.sku === sku ? ` <span class="tag">this item</span>` : ` <button type="button" data-d="open-sku" data-sku="${esc(e.sku)}">View</button>`}</span></li>`; }).join("")}</ul></details>` : ""}
         ${edit ? `<div class="drawer-actions"><button type="button" class="btn-primary" data-d="receive">Receive more</button>${staged < total ? `<button type="button" data-d="stage">Stage to pick line</button>` : ""}</div>` : ""}
         <div class="dr-tabs" role="tablist">
-          ${[["where", "Locations", rows.length], ["ship", "Shipping", inPlans.length], ["info", "Details", 0], ["hist", "History", hist.length]].map(([k, l, n]) => `<button type="button" role="tab" class="dr-tab${tab === k ? " active" : ""}" aria-selected="${tab === k}" data-d="tab" data-tab="${k}">${l}${n ? ` <span class="dr-count">${n}</span>` : ""}</button>`).join("")}
+          ${[["where", "Locations", rows.length], ["info", "Details", 0], ["hist", "History", hist.length]].map(([k, l, n]) => `<button type="button" role="tab" class="dr-tab${tab === k ? " active" : ""}" aria-selected="${tab === k}" data-d="tab" data-tab="${k}">${l}${n ? ` <span class="dr-count">${n}</span>` : ""}</button>`).join("")}
         </div>
         ${tab === "where" ? `<div class="card">
           <table class="mini-table"><thead><tr><th>Where</th><th class="num">Qty</th><th></th></tr></thead><tbody>${onHandRows}</tbody></table>
-        </div>` : ""}
-        ${tab === "ship" ? `
-        <div class="card ship">
-          <div class="sub" style="margin-bottom:.3rem">SHIPPING</div>
-          <div>${fmtNum(staged)} on the pick line · ${fmtNum(promised)} promised to open plans</div>
-          ${inPlans.length ? `<ul class="dr-plans">${inPlans.map((x) => `<li><span><span class="mono">${esc(x.h.shipment_id)}</span> <span class="sub">${esc(x.h.ship_to_name || "")}</span> · ${fmtNum(x.qty)}</span><button type="button" data-d="plan-open" data-id="${esc(x.h.shipment_id)}">Open</button></li>`).join("")}</ul>` : ""}
-          ${canPlan && total > 0 ? `<div class="drawer-actions">
-            <button type="button" class="btn-primary" data-d="plan-new">Add to a new shipment plan</button>
-            ${plans.filter((x) => x.h.status === "Draft" || x.h.status === "Ready").slice(0, 4).map((x) => `<button type="button" data-d="plan-add" data-id="${esc(x.h.shipment_id)}">Add to ${esc(x.h.shipment_id)}</button>`).join("")}
-          </div>` : ""}
         </div>` : ""}
         ${tab === "info" ? `
         <div class="card">
@@ -150,18 +153,13 @@ function act(e) {
   const d = b.dataset.d;
   const sku = cur.sku;
   if (d === "close") return closeDrawer();
+  if (d === "open-sku") return openDrawer(b.dataset.sku);
   if (d === "tab") { cur.tab = b.dataset.tab; return render(); }
   if (d === "receive") return openReceive({ sku });
   if (d === "move") return openMove({ from: b.dataset.code, sku, lot: b.dataset.lot });
   if (d === "stage") return openStage({ sku });
   if (d === "owner") return openSetOwner(S.balances.find((r) => String(r._oid) === b.dataset.oid));
   if (d === "edit") { const lib = findLib(sku); if (lib) openEditDialog(lib); return; }
-  if (d === "plan-new" || d === "plan-add" || d === "plan-open") {
-    const header = d === "plan-new" ? null : S.shipments.headers.find((h) => h.shipment_id === b.dataset.id);
-    closeDrawer();
-    S.actions.switchTab && S.actions.switchTab("pick");
-    openPlan(header, d === "plan-open" ? {} : { preset: { sku } });
-  }
 }
 
 let wired = false;
