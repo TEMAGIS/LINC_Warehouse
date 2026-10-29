@@ -67,6 +67,8 @@ export function initStock() {
     }
   });
   S.render.stock = renderStock;
+  // Used by the Map tab: show the stock held in one bay.
+  S.actions.showStock = (q) => { F.q = q; F.scope = "all"; F.view = "rows"; F.page = 1; S.actions.switchTab && S.actions.switchTab("stock"); };
 }
 
 export function renderStock() {

@@ -15,13 +15,14 @@ import { discoverShipments, loadShipments } from "./shipments.js";
 import { initStock } from "./stock.js";
 import { initPickline } from "./pickline.js";
 import { initDrawer } from "./drawer.js";
+import { initMap } from "./map.js";
 import { initTransactions } from "./transactions.js";
 import { initSettings } from "./settings.js";
 import { initLibTab } from "./libtab.js";
 import { loadOwners, isScoped, myOwnerCodes, ownerName } from "./owners.js";
 import { loadUsers, decideAccess, blockedMessage, addUser, initUsers } from "./users.js";
 
-const TABS = ["stock", "pick", "txn", "lib", "users", "set"];
+const TABS = ["stock", "map", "pick", "txn", "lib", "users", "set"];
 
 const tabAllowed = (t) => (t === "set" || t === "users" ? S.isAdmin : true);
 
@@ -135,7 +136,7 @@ async function onReady({ me, profile }) {
   S.actions.refresh = () => refresh();
   S.actions.switchTab = switchTab;
   S.actions.reloadBalances = async () => { await loadBalances(); await refresh(); };
-  initStock(); initPickline(); initDrawer(); initTransactions(); initSettings(); initUsers(); initLibTab();
+  initStock(); initPickline(); initDrawer(); initMap(); initTransactions(); initSettings(); initUsers(); initLibTab();
 
   $("#user-label").textContent = `${S.me.name} · ${S.role}${isScoped() ? ` · ${myOwnerCodes().map(ownerName).join(", ")}` : ""}${S.role !== "View only" && !S.canEdit ? " (view only)" : ""}`;
   $("#readonly-badge").hidden = S.canEdit;

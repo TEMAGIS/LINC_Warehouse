@@ -100,6 +100,32 @@ export const OWNERS_TABLE = {
   ],
 };
 
+// Warehouse locations placed on the map: one POINT per bay (zone + row + bay). Edited on the Map tab (map.js).
+export const LOCATIONS_LAYER = {
+  name: "Locations",
+  displayField: "bay_code",
+  fields: [
+    str("bay_code", 12, "Bay code"),
+    str("label", 120, "Label"),
+    str("location_type", 30, "Type"),
+    int("capacity", "Capacity (units)"),
+    str("active", 5, "Active"),
+    str("notes", 255, "Notes"),
+    str("added_by", 150, "Added by"),
+    date("added_date", "Added"),
+  ],
+};
+
+function toLayerDefinition(spec) {
+  const t = toTableDefinition(spec);
+  return {
+    ...t, type: "Feature Layer", geometryType: "esriGeometryPoint",
+    extent: { xmin: -20037508.34, ymin: -20037508.34, xmax: 20037508.34, ymax: 20037508.34, spatialReference: { wkid: 102100, latestWkid: 3857 } },
+    drawingInfo: { renderer: { type: "simple", symbol: { type: "esriSMS", style: "esriSMSCircle", color: [0, 40, 104, 255], size: 8, outline: { color: [255, 255, 255, 255], width: 1 } } } },
+    allowGeometryUpdates: true,
+  };
+}
+
 function toTableDefinition(spec) {
   const base = (f) => ({ sqlType: "sqlTypeOther", nullable: true, editable: true, domain: null, defaultValue: null, ...f });
   return {
@@ -153,6 +179,7 @@ export async function discoverShipments() {
   H.ready = false;
   H.usersId = null;
   H.ownersId = null;
+  H.locationsId = null;
   S.usersReady = false;
   try {
     let url = CONFIG.SHIPMENTS_SERVICE_URL;
@@ -173,6 +200,8 @@ export async function discoverShipments() {
     H.usersId = users ? users.id : null;
     const owners = t.find((x) => x.name === OWNERS_TABLE.name);
     H.ownersId = owners ? owners.id : null;
+    const locs = (meta.layers || []).find((x) => x.name === LOCATIONS_LAYER.name);
+    H.locationsId = locs ? locs.id : null;
     H.itemId = itemId;
     H.caps = String(meta.capabilities || "");
     S.usersReady = !!users;
@@ -285,4 +314,13 @@ export async function addOwnersTable() {
   await esriRequest(`${adminUrl(H.url)}/addToDefinition`, { addToDefinition: JSON.stringify({ tables: [toTableDefinition(OWNERS_TABLE)] }) });
   await discoverShipments();
   if (H.ownersId === null || H.ownersId === undefined) throw new Error("The table was added but couldn't be found afterwards. Reload the page.");
+}
+
+/** Adds the Locations point layer to the shipments service (publisher account needed). */
+export async function addLocationsLayer() {
+  const H = S.shipments;
+  if (!H.url) throw new Error("The shipments service wasn't found.");
+  await esriRequest(`${adminUrl(H.url)}/addToDefinition`, { addToDefinition: JSON.stringify({ layers: [toLayerDefinition(LOCATIONS_LAYER)] }) });
+  await discoverShipments();
+  if (H.locationsId === null || H.locationsId === undefined) throw new Error("The layer was added but couldn't be found afterwards. Reload the page.");
 }

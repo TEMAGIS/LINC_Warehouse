@@ -194,3 +194,28 @@
 .seg-btn + .seg-btn { border-left: 1px solid var(--navy, #002868); }
 .seg-btn.active { background: var(--navy, #002868); color: #fff; }
 .seg-btn:not(.active):hover { background: #eef3fb; }
+
+/* Map tab */
+.map-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 1rem; align-items: start; }
+.map-el { height: calc(100vh - 140px); min-height: 420px; border: 1px solid var(--border); border-radius: var(--radius, 8px); overflow: hidden; background: #dfe5ec; }
+.map-el.placing, .map-el.placing .leaflet-grab { cursor: crosshair; }
+.map-side { background: var(--card, #fff); border: 1px solid var(--border); border-radius: var(--radius, 8px); padding: 0.9rem; max-height: calc(100vh - 140px); overflow: auto; }
+.map-side h3 { margin: 1rem 0 0.4rem; font-size: 1rem; }
+.map-search input { width: 100%; margin-bottom: 0.5rem; }
+.map-hits { display: flex; flex-direction: column; gap: 0.25rem; margin-bottom: 0.6rem; }
+.map-hits button { text-align: left; }
+.map-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; margin: 0.6rem 0; }
+.map-stats > div { border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem 0.5rem; display: flex; flex-direction: column; }
+.map-stats b { font-size: 1.2rem; color: var(--navy, #002868); }
+.map-stats .warn { color: var(--warn, #b45309); font-weight: 600; }
+.map-legend { display: flex; flex-wrap: wrap; gap: 0.3rem 0.8rem; font-size: 0.78rem; color: var(--muted); margin-bottom: 0.7rem; }
+.map-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.map-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.7rem 0; }
+.map-list { list-style: none; margin: 0; padding: 0; }
+.map-list li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid #eceff2; }
+.map-pin { width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.68rem; font-weight: 700; }
+.map-pin.mini { display: inline-block; width: 12px; height: 12px; border-width: 1px; box-shadow: none; }
+.map-pin.sel { outline: 3px solid #f5b301; }
+.pin-empty { background: #8b95a5; } .pin-off { background: #b9bec7; opacity: 0.7; }
+.pin-low { background: #2e8b57; } .pin-mid { background: #d98e04; } .pin-full { background: #c53030; } .pin-has { background: #1d5fbf; }
+@media (max-width: 900px) { .map-wrap { grid-template-columns: minmax(0, 1fr); } .map-el { height: 55vh; min-height: 320px; } .map-side { max-height: none; } }
