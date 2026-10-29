@@ -9,6 +9,7 @@
 import { esriRequest } from "./shared/esri-client.js";
 import { S } from "./state.js";
 import { resolveLayers } from "./data.js";
+import { discoverShipments } from "./shipments.js";
 
 const str = (name, length, alias = name) => ({ name, alias, type: "esriFieldTypeString", length });
 const dbl = (name, alias = name) => ({ name, alias, type: "esriFieldTypeDouble" });
@@ -19,6 +20,7 @@ export const WANTED = {
   txn: [
     str("shipment_id", 50, "Shipment ID"),
     str("ship_to", 255, "Ship to"),
+    str("property_owner", 50, "Property owner"),
     str("unit_of_measure", 50, "Unit of measure"),
     str("processing_status", 20, "Processing status"),
     str("processing_error", 255, "Processing error"),
@@ -27,6 +29,7 @@ export const WANTED = {
   ],
   bal: [
     str("last_transaction_id", 50, "Last transaction ID"),
+    str("property_owner", 50, "Property owner"),
     dbl("quantity_available", "Quantity available"),
     str("unit_of_measure", 50, "Unit of measure"),
     str("item", 255, "Item"),
@@ -42,9 +45,12 @@ export const WANTED = {
     str("flagged_by", 150, "Flagged by"),
     dat("flagged_date", "Flagged date"),
   ],
+  // Tables of the shipments service (their URLs are set when the service is found)
+  lines: [str("property_owner", 50, "Property owner")],
+  usr: [str("property_owner_of", 255, "Property owner of")],
 };
 
-export const LABELS = { txn: "Transactions", bal: "Inventory Balance", lib: "Barcode Library" };
+export const LABELS = { txn: "Transactions", bal: "Inventory Balance", lib: "Barcode Library", lines: "Shipment lines", usr: "Warehouse users" };
 
 /** {key: [field specs not on the live layer]} (only layers whose fields could be read). */
 export function missingFields() {
@@ -70,6 +76,7 @@ export async function addMissingFields(key) {
   const url = S.urls[key];
   if (!url) throw new Error("That layer's URL isn't known.");
   await esriRequest(`${adminUrl(url)}/addToDefinition`, { addToDefinition: JSON.stringify({ fields: miss.map(toDef) }) });
-  await resolveLayers();
+  if (key === "lines" || key === "usr") await discoverShipments();
+  else await resolveLayers();
   return miss.map((f) => f.name);
 }

@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 import { CONFIG } from "./config.js";
 import * as auth from "./shared/arcgis-auth.js";
-import { esriRequest, itemServiceUrl, findServicesByTitle, queryAll, applyServiceEdits, applyEdits } from "./shared/esri-client.js";
+import { esriRequest, itemServiceUrl, findServicesByTitle, queryAll, applyServiceEdits, applyEdits, getLayerInfo } from "./shared/esri-client.js";
 import { newTxnId } from "./shared/util.js";
 import { S } from "./state.js";
 
@@ -64,6 +64,7 @@ export const LINES_TABLE = {
     str("status", 20, "Status"),
     str("note", 255, "Note"),
     str("transaction_gid", 50, "Ship transaction"),
+    str("property_owner", 50, "Property owner"),
   ],
 };
 
@@ -78,6 +79,21 @@ export const USERS_TABLE = {
     str("role", 20, "Role"),
     str("active", 5, "Active"),
     str("phone", 40, "Phone"),
+    str("notes", 255, "Notes"),
+    str("property_owner_of", 255, "Property owner of"),
+    str("added_by", 150, "Added by"),
+    date("added_date", "Added"),
+  ],
+};
+
+// Property owners (groups that receive and manage their own consumables). Edited in Settings (owners.js).
+export const OWNERS_TABLE = {
+  name: "Owners",
+  displayField: "name",
+  fields: [
+    str("code", 30, "Code"),
+    str("name", 120, "Name"),
+    str("active", 5, "Active"),
     str("notes", 255, "Notes"),
     str("added_by", 150, "Added by"),
     date("added_date", "Added"),
@@ -110,7 +126,7 @@ const adminUrl = (u) => u.replace("/rest/services/", "/rest/admin/services/");
 export async function createShipmentsService() {
   const profile = await auth.fetchProfile();
   const username = (profile && profile.username) || auth.getUsername();
-  const description = "LINC Warehouse: shipment plans, their lines, and the warehouse user list";
+  const description = "LINC Warehouse: shipment plans, their lines, the warehouse user list and property owners";
   const created = await esriRequest(`${CONFIG.ARCGIS_PORTAL_URL}/sharing/rest/content/users/${encodeURIComponent(username)}/createService`, {
     createParameters: JSON.stringify({
       name: CONFIG.SHIPMENTS_SERVICE_TITLE, serviceDescription: description, hasStaticData: false, maxRecordCount: 2000,
@@ -121,7 +137,7 @@ export async function createShipmentsService() {
   });
   const svc = String(created.serviceurl || created.encodedServiceURL || "").replace(/\/+$/, "");
   if (!svc) throw new Error("ArcGIS did not return a service URL.");
-  await esriRequest(`${adminUrl(svc)}/addToDefinition`, { addToDefinition: JSON.stringify({ tables: [SHIPMENTS_TABLE, LINES_TABLE, USERS_TABLE].map(toTableDefinition) }) });
+  await esriRequest(`${adminUrl(svc)}/addToDefinition`, { addToDefinition: JSON.stringify({ tables: [SHIPMENTS_TABLE, LINES_TABLE, USERS_TABLE, OWNERS_TABLE].map(toTableDefinition) }) });
   try {
     await esriRequest(`${adminUrl(svc)}/updateDefinition`, {
       updateDefinition: JSON.stringify({ editorTrackingInfo: { enableEditorTracking: true, enableOwnershipAccessControl: false, allowOthersToUpdate: true, allowOthersToDelete: true, allowOthersToQuery: true } }),
@@ -136,13 +152,15 @@ export async function discoverShipments() {
   const H = S.shipments;
   H.ready = false;
   H.usersId = null;
+  H.ownersId = null;
   S.usersReady = false;
   try {
     let url = CONFIG.SHIPMENTS_SERVICE_URL;
+    let itemId = CONFIG.SHIPMENTS_ITEM_ID || "";
     if (!url && CONFIG.SHIPMENTS_ITEM_ID) url = await itemServiceUrl(CONFIG.SHIPMENTS_ITEM_ID);
     if (!url) {
       const found = await findServicesByTitle(CONFIG.SHIPMENTS_SERVICE_TITLE);
-      if (found.length) url = String(found[0].url || "").replace(/\/+$/, "") || (await itemServiceUrl(found[0].id));
+      if (found.length) { itemId = found[0].id; url = String(found[0].url || "").replace(/\/+$/, "") || (await itemServiceUrl(found[0].id)); }
     }
     if (!url) return false;
     const meta = await esriRequest(url, {}, { method: "GET" });
@@ -153,7 +171,17 @@ export async function discoverShipments() {
     const users = t.find((x) => x.name === USERS_TABLE.name);
     H.url = url; H.headerId = head.id; H.linesId = lines.id; H.ready = true;
     H.usersId = users ? users.id : null;
+    const owners = t.find((x) => x.name === OWNERS_TABLE.name);
+    H.ownersId = owners ? owners.id : null;
+    H.itemId = itemId;
+    H.caps = String(meta.capabilities || "");
     S.usersReady = !!users;
+    // Field lists of the Shipment_Lines and Users tables (for the property-owner field checks)
+    S.urls = { ...S.urls, lines: `${url}/${lines.id}`, usr: users ? `${url}/${users.id}` : "" };
+    try {
+      const [li, ui] = await Promise.all([getLayerInfo(S.urls.lines), users ? getLayerInfo(S.urls.usr) : null]);
+      S.info = { ...S.info, lines: li, usr: ui };
+    } catch (err) { console.info("Couldn't read the shipments tables' fields:", err.message); }
     return true;
   } catch (err) {
     console.info("Shipments service not available:", err.message);
@@ -179,7 +207,7 @@ export const linesOf = (shipmentId) => S.shipments.lines.filter((l) => l.shipmen
 const nowMs = () => Date.now();
 
 /** Quantity already promised to OPEN plans for one pick-line row (sku + location code + lot). */
-export function plannedQty(sku, code, lot, { exceptShipmentId = "" } = {}) {
+export function plannedQty(sku, code, lot, { exceptShipmentId = "", owner = undefined } = {}) {
   const open = new Set(S.shipments.headers.filter((h) => OPEN_STATUSES.includes(h.status) && h.shipment_id !== exceptShipmentId).map((h) => h.shipment_id));
   let n = 0;
   for (const l of S.shipments.lines) {
@@ -188,6 +216,7 @@ export function plannedQty(sku, code, lot, { exceptShipmentId = "" } = {}) {
     if (String(l.item_sku || "").trim() !== String(sku || "").trim()) continue;
     if (String(l.from_location || "") !== String(code || "")) continue;
     if (String(l.lot || "").trim() !== String(lot || "").trim()) continue;
+    if (owner !== undefined && String(l.property_owner || "").trim().toLowerCase() !== String(owner || "").trim().toLowerCase()) continue;
     n += Number(l.quantity) - (Number(l.qty_shipped) || 0);
   }
   return n;
@@ -203,7 +232,8 @@ export async function savePlan(header, lines, { existing = null } = {}) {
   if (!H.ready) throw new Error("The shipments service isn't set up yet (Settings → Create the shipments service).");
   const t = totals(lines);
   const attrs = { ...header, ...t, updated_date: nowMs() };
-  const lineFields = LINES_TABLE.fields.map((f) => f.name);
+  const liveLine = new Set(((S.info.lines && S.info.lines.fields) || []).map((f) => f.name.toLowerCase()));
+  const lineFields = LINES_TABLE.fields.map((f) => f.name).filter((n) => n !== "property_owner" || liveLine.has("property_owner"));
   const lineAttrs = lines.map((l, i) => {
     const clean = {};
     for (const k of lineFields) if (l[k] !== undefined && l[k] !== null) clean[k] = l[k]; // drops OBJECTID, CreationDate, _oid ...
@@ -246,4 +276,13 @@ export async function addUsersTable() {
   await esriRequest(`${adminUrl(H.url)}/addToDefinition`, { addToDefinition: JSON.stringify({ tables: [toTableDefinition(USERS_TABLE)] }) });
   await discoverShipments();
   if (!S.usersReady) throw new Error("The table was added but couldn't be found afterwards. Reload the page.");
+}
+
+/** Adds the Owners table to a service created before property owners existed (service owner / admin account). */
+export async function addOwnersTable() {
+  const H = S.shipments;
+  if (!H.url) throw new Error("The shipments service wasn't found.");
+  await esriRequest(`${adminUrl(H.url)}/addToDefinition`, { addToDefinition: JSON.stringify({ tables: [toTableDefinition(OWNERS_TABLE)] }) });
+  await discoverShipments();
+  if (H.ownersId === null || H.ownersId === undefined) throw new Error("The table was added but couldn't be found afterwards. Reload the page.");
 }

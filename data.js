@@ -26,9 +26,9 @@ export async function resolveLayers() {
     serviceLayerUrl(ids.transactions),
     serviceLayerUrl(ids.library, { preferLayers: true }),
   ]);
-  S.urls = { bal, txn, lib };
+  S.urls = { ...S.urls, bal, txn, lib };
   const [ib, it, il] = await Promise.all([getLayerInfo(bal), getLayerInfo(txn), getLayerInfo(lib)]);
-  S.info = { bal: ib, txn: it, lib: il };
+  S.info = { ...S.info, bal: ib, txn: it, lib: il };
   // Warehouse staff = can add Transactions AND (in browser mode) edit Inventory Balance.
   // (Layer capabilities reflect what this account may do.)
   S.canEditBalance = can(ib, "update") || can(ib, "editing");

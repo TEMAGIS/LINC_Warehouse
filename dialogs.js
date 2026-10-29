@@ -12,6 +12,9 @@ import { balanceCode, codeLabel, parseCode, picklineLanes, isPicklineRow, isPick
 import { submitTransactions, summarizeResults } from "./txn.js";
 import { itemPicker, scanInput, wireScan } from "./widgets.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel, ci } from "./units.js";
+import { ownersActive, canActOn, canLeaveUnowned, receiveChoices, ownerName } from "./owners.js";
+
+let lastOwner = ""; // remembered between "receive another" dialogs
 
 const done = () => S.actions.refresh && S.actions.refresh();
 
@@ -58,7 +61,9 @@ export function openReceive({ again = false } = {}) {
       <div class="hint" id="rc-gal"></div>
       <label>Lot / reference code (optional) <input id="rc-lot" /></label>
     </div>
-    ${locBox("rc-to", "Put-away location")}`;
+    ${locBox("rc-to", "Put-away location")}
+    ${ownersActive() ? `<label>Property owner (the group that manages this stock)${canLeaveUnowned() ? "" : " *"}
+      <select id="rc-owner">${canLeaveUnowned() ? `<option value="">— No owner (shared warehouse stock) —</option>` : receiveChoices().length > 1 ? `<option value="">Choose…</option>` : ""}${receiveChoices().map((o) => `<option value="${esc(o.code)}" ${o.code === lastOwner ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></label>` : ""}`;
   let another = false;
   const m = openModal({
     title: "Receive stock",
@@ -98,7 +103,10 @@ export function openReceive({ again = false } = {}) {
     const qty = Number($("rc-qty").value);
     const to = parseCode($("rc-to").value);
     if (!to) throw new Error("Scan or type a valid put-away location.");
-    await run([{ type: "Receive", sku: picked.sku, name: picked.name, qty, lot: $("rc-lot").value.trim(), to: to.code }]);
+    const owner = ownersActive() ? $("rc-owner").value : "";
+    if (ownersActive() && !owner && !canLeaveUnowned()) throw new Error("Choose the property owner.");
+    await run([{ type: "Receive", sku: picked.sku, name: picked.name, qty, lot: $("rc-lot").value.trim(), to: to.code, owner }]);
+    lastOwner = owner;
   }
   return m;
 }
@@ -135,12 +143,14 @@ export function openMove({ from = "", sku = "", lot = undefined } = {}) {
     if (!rows.length) { host.innerHTML = `<div class="banner banner-warn">Nothing is recorded at ${esc(codeLabel(p.code))}.</div>`; return; }
     host.innerHTML = `<table class="mini-table"><thead><tr><th></th><th>Item</th><th class="num">On hand</th><th class="num">Move</th></tr></thead><tbody>${rows
       .map((r, i) => {
-        const pre = sku ? normSku(r.item_sku) === normSku(sku) && (lot === undefined || String(r.lot_number || "") === String(lot || "")) : rows.length === 1;
+        const can = canActOn(r.property_owner);
+        const pre = can && (sku ? normSku(r.item_sku) === normSku(sku) && (lot === undefined || String(r.lot_number || "") === String(lot || "")) : rows.length === 1);
         const lib = findLib(r.item_sku);
-        return `<tr><td><input type="checkbox" data-i="${i}" ${pre ? "checked" : ""} aria-label="Move ${esc(itemName(r))}" /></td>
-          <td>${esc(itemName(r))}<div class="sub">${esc(r.item_sku || "")}${r.lot_number ? " · lot " + esc(r.lot_number) : ""} · ${esc(unitLabel(lib, r.unit_of_measure))}</div></td>
+        const own = ownersActive() ? ` · ${r.property_owner ? "owner " + esc(ownerName(r.property_owner)) : "no owner"}${can ? "" : " (not yours to move)"}` : "";
+        return `<tr><td><input type="checkbox" data-i="${i}" ${pre ? "checked" : ""} ${can ? "" : "disabled"} aria-label="Move ${esc(itemName(r))}" /></td>
+          <td>${esc(itemName(r))}<div class="sub">${esc(r.item_sku || "")}${r.lot_number ? " · lot " + esc(r.lot_number) : ""} · ${esc(unitLabel(lib, r.unit_of_measure))}${own}</div></td>
           <td class="num">${fmtNum(onHand(r))}</td>
-          <td class="num"><input class="count-input" type="number" min="1" max="${onHand(r)}" step="1" data-q="${i}" value="${onHand(r)}" inputmode="numeric" data-qty /></td></tr>`;
+          <td class="num"><input class="count-input" type="number" min="1" max="${onHand(r)}" step="1" data-q="${i}" value="${onHand(r)}" inputmode="numeric" data-qty ${can ? "" : "disabled"} /></td></tr>`;
       })
       .join("")}</tbody></table>`;
   };
@@ -158,7 +168,7 @@ export function openMove({ from = "", sku = "", lot = undefined } = {}) {
       const i = Number(cb.dataset.i);
       const r = rows[i];
       const qty = Number(root.querySelector(`[data-q="${i}"]`).value);
-      lines.push({ type: "Move", sku: normSku(r.item_sku), name: itemName(r), qty, lot: r.lot_number || "", from: from.code, to: to.code });
+      lines.push({ type: "Move", sku: normSku(r.item_sku), name: itemName(r), qty, lot: r.lot_number || "", from: from.code, to: to.code, owner: r.property_owner || "" });
     });
     if (!lines.length) throw new Error("Tick at least one item to move.");
     await run(lines);
@@ -183,7 +193,7 @@ export function distribute(rows, total) {
 /** Rows to draw from, oldest first (by last_update; rows never updated sort first), pick line excluded. */
 export function sourceRows(sku) {
   return balancesForSku(sku)
-    .filter((r) => !isPicklineRow(r))
+    .filter((r) => !isPicklineRow(r) && canActOn(r.property_owner))
     .sort((a, b) => (Number(a.last_update) || 0) - (Number(b.last_update) || 0) || balanceCode(a).localeCompare(balanceCode(b)));
 }
 
@@ -233,8 +243,8 @@ export function openStage({ sku = "" } = {}) {
     rows = sourceRows(picked.sku);
     if (!rows.length) { $("st-rows").innerHTML = `<div class="banner banner-warn">No stock of this item outside the pick line.</div>`; $("st-detail").hidden = false; return; }
     $("st-detail").hidden = false;
-    $("st-rows").innerHTML = `<table class="mini-table"><thead><tr><th></th><th>Location</th><th>Lot</th><th class="num">On hand</th><th class="num">Stage</th></tr></thead><tbody>${rows
-      .map((r, i) => `<tr><td><input type="checkbox" data-i="${i}" disabled aria-label="Selected" /></td><td class="mono">${esc(codeLabel(balanceCode(r)))}</td><td>${esc(r.lot_number || "")}</td>
+    $("st-rows").innerHTML = `<table class="mini-table"><thead><tr><th></th><th>Location</th><th>Lot</th>${ownersActive() ? "<th>Owner</th>" : ""}<th class="num">On hand</th><th class="num">Stage</th></tr></thead><tbody>${rows
+      .map((r, i) => `<tr><td><input type="checkbox" data-i="${i}" disabled aria-label="Selected" /></td><td class="mono">${esc(codeLabel(balanceCode(r)))}</td><td>${esc(r.lot_number || "")}</td>${ownersActive() ? `<td class="sub">${esc(ownerName(r.property_owner) || "—")}</td>` : ""}
         <td class="num">${fmtNum(onHand(r))}</td>
         <td class="num"><input class="count-input" type="number" min="0" max="${onHand(r)}" step="1" data-q="${i}" value="0" inputmode="numeric" data-qty /></td></tr>`)
       .join("")}</tbody></table>`;
@@ -257,7 +267,7 @@ export function openStage({ sku = "" } = {}) {
     const lines = [];
     rows.forEach((r, i) => {
       const qty = Number(root.querySelector(`[data-q="${i}"]`).value) || 0;
-      if (qty > 0) lines.push({ type: "Move", sku: normSku(r.item_sku), name: itemName(r), qty, lot: r.lot_number || "", from: balanceCode(r), to: dest });
+      if (qty > 0) lines.push({ type: "Move", sku: normSku(r.item_sku), name: itemName(r), qty, lot: r.lot_number || "", from: balanceCode(r), to: dest, owner: r.property_owner || "" });
     });
     if (!lines.length) throw new Error("Enter how many to stage, or use “Fill from oldest stock”.");
     await run(lines);

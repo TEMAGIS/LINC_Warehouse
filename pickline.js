@@ -12,6 +12,10 @@ import { onHand } from "./data.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
 import { submitTransactions, summarizeResults } from "./txn.js";
 import { openStage, openMove } from "./dialogs.js";
+import { ownersActive, canActOn, ownerName, sameOwner } from "./owners.js";
+
+/** Owner option for plannedQty: only compared when property owners are on. */
+const ownOpt = (r) => (ownersActive() ? { owner: String(r.property_owner || "") } : {});
 import {
   PLAN_STATUS, OPEN_STATUSES, linesOf, plannedQty, newShipmentId, savePlan, patchHeader, patchLines, loadShipments,
 } from "./shipments.js";
@@ -48,7 +52,7 @@ export function renderPickline() {
   const open = heads.filter((h) => OPEN_STATUSES.includes(h.status));
   const lanes = picklineLanes();
   const totalQty = rows.reduce((n, r) => n + onHand(r), 0);
-  const planned = rows.reduce((n, r) => n + plannedQty(r.item_sku, balanceCode(r), r.lot_number), 0);
+  const planned = rows.reduce((n, r) => n + plannedQty(r.item_sku, balanceCode(r), r.lot_number, ownOpt(r)), 0);
   const edit = S.canEdit;
   const filter = S.planFilter || "open";
   const shown = heads.filter((h) => (filter === "all" ? true : filter === "done" ? !OPEN_STATUSES.includes(h.status) : OPEN_STATUSES.includes(h.status)));
@@ -56,18 +60,18 @@ export function renderPickline() {
   const stagedRows = rows.length
     ? rows.map((r) => {
         const code = balanceCode(r);
-        const pl = plannedQty(r.item_sku, code, r.lot_number);
+        const pl = plannedQty(r.item_sku, code, r.lot_number, ownOpt(r));
         const avail = onHand(r) - pl;
         const lib = findLib(r.item_sku);
         const g = gallonsFor(lib, onHand(r));
         return `<tr>
-          <td><span class="t">${esc(itemName(r))}</span><div class="sub">${esc(r.item_sku || "")} · ${esc(unitLabel(lib, r.unit_of_measure))}</div></td>
+          <td><span class="t">${esc(itemName(r))}</span><div class="sub">${esc(r.item_sku || "")} · ${esc(unitLabel(lib, r.unit_of_measure))}${ownersActive() && r.property_owner ? ` · <span class="owner-tag">${esc(ownerName(r.property_owner))}</span>` : ""}</div></td>
           <td class="mono">${esc(codeLabel(code))}</td>
           <td>${esc(r.lot_number || "")}</td>
           <td class="num">${fmtNum(onHand(r))}${g > 0 ? `<div class="sub">≈ ${fmtGallons(g)} gal</div>` : ""}</td>
           <td class="num">${pl ? fmtNum(pl) : "—"}</td>
           <td class="num ${avail <= 0 ? "stock-out" : ""}">${fmtNum(avail)}</td>
-          <td class="row-actions">${edit ? `<button type="button" data-act="unstage" data-code="${esc(code)}" data-sku="${esc(normSku(r.item_sku))}" data-lot="${esc(r.lot_number || "")}">Return to storage</button>` : ""}</td>
+          <td class="row-actions">${edit && canActOn(r.property_owner) ? `<button type="button" data-act="unstage" data-code="${esc(code)}" data-sku="${esc(normSku(r.item_sku))}" data-lot="${esc(r.lot_number || "")}">Return to storage</button>` : ""}</td>
         </tr>`;
       }).join("")
     : `<tr><td colspan="7" class="empty">Nothing is staged on the pick line yet.${edit ? " Use “Stage to pick line”." : ""}</td></tr>`;
@@ -132,16 +136,17 @@ export function validateHeader(h, lines) {
   return errs;
 }
 
-const lineKey = (sku, code, lot) => `${normSku(sku)}|${code}|${String(lot || "").trim()}`;
+const lineKey = (sku, code, lot, owner = "") => `${normSku(sku)}|${code}|${String(lot || "").trim()}|${ownersActive() ? String(owner || "").trim().toLowerCase() : ""}`;
 
 /** Pick-line rows with how many are still free to promise, given other plans and this editor's lines. */
 export function availableRows(editorLines, { exceptShipmentId = "" } = {}) {
   const inEditor = new Map();
-  for (const l of editorLines) inEditor.set(lineKey(l.item_sku, l.from_location, l.lot), (inEditor.get(lineKey(l.item_sku, l.from_location, l.lot)) || 0) + (Number(l.quantity) || 0));
+  for (const l of editorLines) { const k = lineKey(l.item_sku, l.from_location, l.lot, l.property_owner); inEditor.set(k, (inEditor.get(k) || 0) + (Number(l.quantity) || 0)); }
   return picklineRows()
+    .filter((r) => canActOn(r.property_owner))
     .map((r) => {
       const code = balanceCode(r);
-      const free = onHand(r) - plannedQty(r.item_sku, code, r.lot_number, { exceptShipmentId }) - (inEditor.get(lineKey(r.item_sku, code, r.lot_number)) || 0);
+      const free = onHand(r) - plannedQty(r.item_sku, code, r.lot_number, { exceptShipmentId, ...ownOpt(r) }) - (inEditor.get(lineKey(r.item_sku, code, r.lot_number, r.property_owner)) || 0);
       return { r, code, free };
     })
     .filter((x) => x.free > 0);
@@ -198,7 +203,7 @@ export function openPlan(header) {
     const host = q("#pl-lines");
     host.innerHTML = lines.length
       ? `<table class="mini-table"><thead><tr><th>Item</th><th>From</th><th class="num">Qty</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead><tbody>${lines
-          .map((l, i) => `<tr><td>${esc(l.item_desc || l.item_sku)}<div class="sub">${esc(l.item_sku || "")}${l.lot ? " · lot " + esc(l.lot) : ""}</div></td>
+          .map((l, i) => `<tr><td>${esc(l.item_desc || l.item_sku)}<div class="sub">${esc(l.item_sku || "")}${l.lot ? " · lot " + esc(l.lot) : ""}${l.property_owner ? ` · <span class="owner-tag">${esc(ownerName(l.property_owner))}</span>` : ""}</div></td>
             <td class="mono">${esc(codeLabel(l.from_location))}</td><td class="num">${fmtNum(l.quantity)}${l.unit ? `<div class="sub">${esc(l.unit)}</div>` : ""}</td>
             <td>${esc(l.status || "Planned")}${l.note ? `<div class="sub">${esc(l.note)}</div>` : ""}</td>
             ${canEdit ? `<td><button type="button" class="icon-btn" data-rm="${i}" aria-label="Remove line">&times;</button></td>` : ""}</tr>`)
@@ -207,7 +212,7 @@ export function openPlan(header) {
     if (canEdit) {
       const av = availableRows(lines, { exceptShipmentId: id });
       q("#pl-add-sel").innerHTML = av.length
-        ? av.map((x, i) => `<option value="${i}">${esc(itemName(x.r))} — ${esc(codeLabel(x.code))}${x.r.lot_number ? " · lot " + esc(x.r.lot_number) : ""} (${fmtNum(x.free)} free)</option>`).join("")
+        ? av.map((x, i) => `<option value="${i}">${esc(itemName(x.r))} — ${esc(codeLabel(x.code))}${x.r.lot_number ? " · lot " + esc(x.r.lot_number) : ""}${ownersActive() && x.r.property_owner ? " · " + esc(ownerName(x.r.property_owner)) : ""} (${fmtNum(x.free)} free)</option>`).join("")
         : `<option value="">Nothing free on the pick line</option>`;
       q("#pl-add-sel")._av = av;
     }
@@ -221,9 +226,9 @@ export function openPlan(header) {
       if (!x) return toast("Nothing free to add.", "error");
       if (!(qty > 0) || Math.round(qty) !== qty) return toast("Enter a whole quantity.", "error");
       if (qty > x.free) return toast(`Only ${x.free} free of that line.`, "error");
-      const same = lines.find((l) => lineKey(l.item_sku, l.from_location, l.lot) === lineKey(x.r.item_sku, x.code, x.r.lot_number) && l.status !== "Shipped");
+      const same = lines.find((l) => lineKey(l.item_sku, l.from_location, l.lot, l.property_owner) === lineKey(x.r.item_sku, x.code, x.r.lot_number, x.r.property_owner) && l.status !== "Shipped");
       if (same) same.quantity = Number(same.quantity) + qty;
-      else lines.push({ item_sku: normSku(x.r.item_sku), item_desc: itemName(x.r), unit: unitLabel(findLib(x.r.item_sku), x.r.unit_of_measure), quantity: qty, lot: x.r.lot_number || "", from_location: x.code, status: "Planned" });
+      else lines.push({ item_sku: normSku(x.r.item_sku), item_desc: itemName(x.r), unit: unitLabel(findLib(x.r.item_sku), x.r.unit_of_measure), quantity: qty, lot: x.r.lot_number || "", from_location: x.code, property_owner: ownersActive() ? String(x.r.property_owner || "") : "", status: "Planned" });
       q("#pl-add-qty").value = "";
       renderLines();
     });
@@ -287,7 +292,7 @@ export async function shipPlan(header) {
   const shipTo = [header.ship_to_name, header.ship_to_address, header.ship_to_city, header.ship_to_state].filter(Boolean).join(", ").slice(0, 250);
   const txnLines = planLines.map((l) => ({
     type: "Ship", sku: l.item_sku, name: l.item_desc, qty: Number(l.quantity) - (Number(l.qty_shipped) || 0), lot: l.lot || "",
-    from: l.from_location, extra: { shipment_id: id, ship_to: shipTo },
+    from: l.from_location, owner: l.property_owner || "", extra: { shipment_id: id, ship_to: shipTo },
   }));
   const results = await submitTransactions(txnLines);
   const patches = [];

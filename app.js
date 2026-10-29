@@ -17,6 +17,7 @@ import { initPickline } from "./pickline.js";
 import { initTransactions } from "./transactions.js";
 import { initSettings } from "./settings.js";
 import { initLibTab } from "./libtab.js";
+import { loadOwners, isScoped, myOwnerCodes, ownerName } from "./owners.js";
 import { loadUsers, decideAccess, blockedMessage, addUser, initUsers } from "./users.js";
 
 const TABS = ["stock", "pick", "txn", "lib", "users", "set"];
@@ -40,7 +41,7 @@ function updateBadges() {
 }
 
 async function refresh({ full = false } = {}) {
-  if (full) await Promise.all([loadBalances(), loadTransactions()]);
+  if (full) { await Promise.all([loadBalances(), loadTransactions()]); try { await loadOwners(); } catch (err) { console.info("Owners reload skipped:", err.message); } }
   try { await loadShipments(); } catch (err) { console.warn("Shipments reload failed:", err); }
   S.render[S.tab] && S.render[S.tab]();
   updateBadges();
@@ -67,6 +68,7 @@ async function onReady({ me, profile }) {
   const legacyAdmin = await lookupAdmin(me.email);
   await discoverShipments();
   try { await loadUsers(); } catch (err) { console.warn("Users load failed:", err); S.users = []; }
+  try { await loadOwners(); } catch (err) { console.warn("Owners load failed:", err); S.owners = []; S.ownersReady = false; }
 
   const access = decideAccess({ users: S.users, usersReady: S.usersReady, me: S.me, legacyAdmin });
   if (!access.allowed) {
@@ -80,15 +82,17 @@ async function onReady({ me, profile }) {
     catch (err) { console.warn("Couldn't add the first administrator to the list:", err); }
   }
   S.role = access.role;
+  S.myRow = access.row || null;
   S.isAdmin = S.role === "Administrator";
   S.canEdit = S.role !== "View only" && S.layerCanEdit;
 
   try { await loadShipments(); } catch (err) { console.warn(err); }
 
   S.actions.refresh = () => refresh();
+  S.actions.reloadBalances = async () => { await loadBalances(); await refresh(); };
   initStock(); initPickline(); initTransactions(); initSettings(); initUsers(); initLibTab();
 
-  $("#user-label").textContent = `${S.me.name} · ${S.role}${S.role !== "View only" && !S.canEdit ? " (view only)" : ""}`;
+  $("#user-label").textContent = `${S.me.name} · ${S.role}${isScoped() ? ` · ${myOwnerCodes().map(ownerName).join(", ")}` : ""}${S.role !== "View only" && !S.canEdit ? " (view only)" : ""}`;
   $("#readonly-badge").hidden = S.canEdit;
   for (const b of $$("#tabs .tab-btn")) b.hidden = !tabAllowed(b.dataset.tab);
   $("#tabs").hidden = false;

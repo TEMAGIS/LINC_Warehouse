@@ -11,6 +11,7 @@ import { codeLabel, cleanScan } from "./loc.js";
 import { fmtNum, unitLabel } from "./units.js";
 import { retryTransaction, voidTransaction } from "./txn.js";
 import { loadBalances, loadTransactions } from "./data.js";
+import { ownerName } from "./owners.js";
 
 const F = { q: "", type: "", status: "", page: 1 };
 
@@ -29,7 +30,7 @@ export function filterTxns(rows, { q = "", type = "", status = "" } = {}) {
     if (type && t.transaction_type !== type) return false;
     if (status && statusOf(t) !== status) return false;
     if (!ws.length) return true;
-    const hay = `${itemName(t)} ${t.item_sku || ""} ${t.lot || ""} ${side(t, "from_")} ${side(t, "to_")} ${t.performed_by || ""} ${t.shipment_id || ""}`.toLowerCase();
+    const hay = `${itemName(t)} ${t.item_sku || ""} ${t.lot || ""} ${side(t, "from_")} ${side(t, "to_")} ${t.performed_by || ""} ${t.shipment_id || ""} ${ownerName(t.property_owner)}`.toLowerCase();
     const codes = `${cleanScan(side(t, "from_"))} ${cleanScan(side(t, "to_"))}`.toLowerCase();
     return ws.every((w) => hay.includes(w) || codes.includes(w));
   });
@@ -110,7 +111,7 @@ function renderRows() {
         return `<tr>
           <td class="sub">${esc(fmtDateTime(t.transaction_datetime))}</td>
           <td><span class="txn-type ${cls}">${esc(type)}</span></td>
-          <td><span class="t">${esc(itemName(t))}</span><div class="sub">${esc(t.item_sku || "")}${t.lot ? " · lot " + esc(t.lot) : ""}</div></td>
+          <td><span class="t">${esc(itemName(t))}</span><div class="sub">${esc(t.item_sku || "")}${t.lot ? " · lot " + esc(t.lot) : ""}${t.property_owner ? ` · <span class="owner-tag">${esc(ownerName(t.property_owner))}</span>` : ""}</div></td>
           <td class="num">${fmtNum(t.quantity)}<div class="sub">${esc(unitLabel(lib, t.unit_of_measure))}</div></td>
           <td class="mono">${esc(side(t, "from_"))}</td><td class="mono">${esc(side(t, "to_"))}</td>
           <td class="sub">${esc(t.performed_by || "")}${t.shipment_id ? `<div>${esc(t.shipment_id)}</div>` : ""}</td>
@@ -134,6 +135,7 @@ function exportCsv() {
     { label: "Quantity", key: "quantity" },
     { label: "Unit", key: "unit_of_measure" },
     { label: "Lot", key: "lot" },
+    { label: "Property owner", get: (t) => ownerName(t.property_owner) },
     { label: "From", get: (t) => side(t, "from_") },
     { label: "To", get: (t) => side(t, "to_") },
     { label: "By", key: "performed_by" },

@@ -13,7 +13,7 @@ A mobile-friendly console for **receiving, moving and shipping** warehouse inven
 | **Ship** | Only from the **Pick line** tab, through a **shipment plan**: recipient, ship-to location (name, address), order reference, requested date, and the pick-line items going out. Save as Draft, mark Ready, print a pick sheet, **Ship now** writes one Ship transaction per line. |
 | **Library** | The Barcode Library as a searchable list (item, barcode, category, unit, gallons, on hand) with **Add item** (the same form the scanner uses), **Edit**, and **Flag for delete**, so the Survey123 library form isn't needed. Flagging never deletes: the record stays, marked `delete_flag = Yes` with reason, who and when, and is hidden from the list and item pickers until you tick "Flagged for delete" and **Restore** it. Stock and transaction history keep working. Everything needs Editing turned on for the Barcode Library item in ArcGIS Online; otherwise the tab shows a read-only notice. |
 | **Transactions** | The latest transactions from anywhere (this app or the Survey123 form) with status. **Retry** on anything Pending or in Error. CSV export. |
-| **Settings** | Inventory Administrators: schema checks, create the shipments service, webhook and pick-line status. |
+| **Settings** | Administrators: the **ArcGIS items the app uses and who each is shared with** (with what your own account can do and, when it can't edit, the likely reason), property owner groups, schema checks and "Add missing fields", create the shipments service, webhook and pick-line status. |
 
 ## The pick line
 
@@ -59,6 +59,21 @@ Only people on the **warehouse user list** can open the app. The list is the `Us
 - **Before the Users table exists** (Settings shows "Add the Users table"), the app behaves as before: that legacy administrator is an Administrator, everyone else Staff.
 - **Roles don't grant ArcGIS rights.** The role decides what the app offers. What an account can actually write is set by ArcGIS sharing. Staff need edit access to the Transactions and Inventory Balance layers. If a role allows editing but the account can't, the app shows "view only" and says why. The fix is in ArcGIS Online: turn on **Editing** for the Inventory Balance item and share it with a group whose members can update.
 
+## Property owners (groups that manage their own consumables)
+
+Some consumables are received and managed by different groups. Every stock row and transaction records a **property owner** (`property_owner`, the owner's code). The same item on the same shelf and lot owned by two groups is kept as **two** Inventory Balance rows, so counts never mix.
+
+- **The list** lives in the `Owners` table of the shipments service, edited in **Settings → Property owners** (add, rename, remove). Each group gets a stable code; renaming is safe.
+- **People** are tied to groups on the **Users** tab (Edit person → *Property owner of*, stored in `property_owner_of`). *Group staff* can receive, move, stage and ship **only** their groups' stock. Administrators, and staff with no group ticked, can handle everything. Everyone can still *view* all stock (ArcGIS sharing is what truly restricts access).
+- **Receive** asks for the owner (group staff must pick one of theirs; others may leave it as "No owner"). Move, Stage and Ship carry the stock's owner; a shipment plan line remembers it.
+- **Existing stock** has no owner. An administrator gives it one from the Stock tab (**Owner** button on a row). That edits the balance row directly and is *not* logged as a transaction; if that owner already has a row for the same item/shelf/lot, the quantities are merged.
+- **Dormant until set up.** Owners only switch on when the Owners table, the `property_owner` fields (Inventory Balance, Transactions, Shipment lines), the Users `property_owner_of` field and at least one group exist; Settings shows each step as ✓/✗. Until then the app behaves exactly as before. **Settings → Add all missing fields** adds the fields; **Add the Owners table** adds the table. Both need the account that owns the layers/service (or an org administrator). Survey123-published Transactions: add `property_owner` to the survey too.
+- **Not covered:** `APPLY_MODE: "webhook"` and the old Survey123 form don't know about owners, so what they write has no owner.
+
+## Settings: ArcGIS items and sharing
+
+The first card lists each ArcGIS Online item the app uses (Inventory Balance, Transactions, Barcode Library, the shipments service, the Assigned Inventory Users layer): item ID, type and owner, the groups it is shared with (marked *members can edit* for shared update groups, and whether you are in them), and **what your account can do today** (from the layer's own capabilities). It also checks that each item ID is really the layer the app reads, shows your ArcGIS user type and whether your role includes **Edit features**, and the "Add person" group. *Applying to inventory* turns a red "can't edit Inventory Balance" into the likely causes: a role without Edit features, the item not shared with a shared update group, you not being in that group, or editing switched off on the item/view. Nothing there changes sharing; that is done in ArcGIS Online. `USERS_ITEM_ID` in `config.js` is the Assigned Inventory Users item (only used for this display).
+
 ## Voiding a stuck transaction
 
 Some Error transactions can never apply (for example a bad quantity from the old form). Retry won't fix them. An administrator can **Void** one with a reason: it is set to `processing_status = Voided`, inventory is untouched, it drops out of the "not applied" count, and Retry is no longer offered. The reconcile and webhook Lambdas skip `Voided` rows (redeploy `reconcile_inventory.py` and `webhook_apply_transaction.py` if you still use them).
@@ -80,7 +95,7 @@ Some Error transactions can never apply (for example a bad quantity from the old
 index.html  app.css  app.js  config.js  lists.js
 state.js  data.js  loc.js  units.js  txn.js  balance.js
 widgets.js  scanner.js  library.js  dialogs.js  users.js  schemafix.js  libtab.js
-stock.js  pickline.js  shipments.js  transactions.js  settings.js
+stock.js  pickline.js  shipments.js  transactions.js  settings.js  items.js  owners.js
 shared/  arcgis-auth.js  esri-client.js  session.js  ui.js  util.js  common.css   (TEMAzon's shared files)
 ```
 

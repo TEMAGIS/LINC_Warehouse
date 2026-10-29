@@ -10,6 +10,9 @@ export const S = {
   role: "",         // "Administrator" | "Staff" | "View only"
   usersReady: false, // the Users table exists in the shipments service
   users: [],        // warehouse user list rows
+  myRow: null,      // the signed-in person's row in the user list (null when none)
+  owners: [],       // property owners [{code, name, ...}] from the Owners table
+  ownersReady: false, // the Owners table exists in the shipments service
   tab: "stock",
   urls: { bal: "", txn: "", lib: "" },
   info: { bal: null, txn: null, lib: null },   // getLayerInfo results (fields, objectIdField, capabilities)

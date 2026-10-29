@@ -31,6 +31,8 @@ export const CONFIG = {
   USERS_LAYER_URL:
     "https://services1.arcgis.com/kILp9lqGUeOhnDbI/arcgis/rest/services/service_9a64986429af4a56965e754b11fbcfba/FeatureServer/0",
   ADMIN_PERMISSION_VALUE: "Property Officer",
+  // Item ID of that Users layer (Assigned Inventory "Users (editable)"). Only used by Settings to show its sharing.
+  USERS_ITEM_ID: "72ec26c1f142418c83eba2a02ef2d2e7",
   USERS_EMAIL_FIELD: "email",
   USERS_PERMISSIONS_FIELD: "permissions",
 

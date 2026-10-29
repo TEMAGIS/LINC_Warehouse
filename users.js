@@ -12,6 +12,7 @@ import { openModal, confirmDialog, toast } from "./shared/ui.js";
 import { applyEdits, queryAll, searchOrgMembers, esriRequest } from "./shared/esri-client.js";
 import { CONFIG } from "./config.js";
 import { S } from "./state.js";
+import { ownedList, ownerName, usersHasOwnerField, ownersActive } from "./owners.js";
 
 let groupCache = null;
 /**
@@ -94,7 +95,7 @@ export async function loadUsers() {
 
 const clean = (a) => {
   const o = {};
-  for (const k of ["email", "username", "full_name", "role", "active", "phone", "notes", "added_by", "added_date"]) if (a[k] !== undefined && a[k] !== null) o[k] = a[k];
+  for (const k of ["email", "username", "full_name", "role", "active", "phone", "notes", "property_owner_of", "added_by", "added_date"]) if (a[k] !== undefined && a[k] !== null) o[k] = a[k];
   return o;
 };
 
@@ -170,16 +171,17 @@ function renderRows() {
   if (!host) return;
   const t = lc(F.q);
   const rows = S.users.filter((u) => !t || `${u.full_name} ${u.email} ${u.username}`.toLowerCase().includes(t));
-  host.innerHTML = `<div class="table-wrap"><table class="grid"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Added</th><th></th></tr></thead><tbody>${
+  host.innerHTML = `<div class="table-wrap"><table class="grid"><thead><tr><th>Name</th><th>Email</th><th>Role</th>${S.ownersReady ? "<th>Property owner of</th>" : ""}<th>Status</th><th>Added</th><th></th></tr></thead><tbody>${
     rows.length
       ? rows.map((u) => `<tr class="${isActive(u) ? "" : "row-inactive"}">
           <td><span class="t">${esc(u.full_name || "")}</span>${u.phone ? `<div class="sub">${esc(u.phone)}</div>` : ""}</td>
           <td>${esc(u.email || "")}<div class="sub">${esc(u.username || "")}</div></td>
           <td>${esc(normRole(u.role))}</td>
+          ${S.ownersReady ? `<td class="sub">${normRole(u.role) === "Administrator" ? "All groups" : ownedList(u).map((c) => esc(ownerName(c))).join(", ") || "All (no group set)"}</td>` : ""}
           <td><span class="status-pill ${isActive(u) ? "st-ok" : "st-muted"}">${isActive(u) ? "Active" : "Off"}</span></td>
           <td class="sub">${esc(fmtDate(u.added_date))}${u.added_by ? `<div>${esc(u.added_by)}</div>` : ""}</td>
           <td class="row-actions"><button type="button" data-act="edit" data-id="${esc(u.OBJECTID ?? u._oid)}">Edit</button></td></tr>`).join("")
-      : `<tr><td colspan="6" class="empty">No one matches.</td></tr>`
+      : `<tr><td colspan="${S.ownersReady ? 7 : 6}" class="empty">No one matches.</td></tr>`
   }</tbody></table></div>`;
 }
 
@@ -195,6 +197,7 @@ function openUserDialog(row) {
     </div>
     <label>Role<select id="us-role">${ROLES.map((r) => `<option value="${esc(r)}" ${row && normRole(row.role) === r ? "selected" : !row && r === "Staff" ? "selected" : ""}>${esc(r)} — ${esc(ROLE_HELP[r])}</option>`).join("")}</select></label>
     ${editing ? `<label class="check"><input id="us-active" type="checkbox" ${isActive(row) ? "checked" : ""} /> Active (can sign in to the app)</label>` : ""}
+    ${ownerPicker(row)}
     <label>Notes<input id="us-notes" value="${esc(row ? row.notes : "")}" /></label>`;
   const buttons = [{ label: "Cancel" }];
   if (editing) buttons.push({ label: "Remove from list", kind: "danger", action: () => remove() });
@@ -237,6 +240,11 @@ function openUserDialog(row) {
       role: q("us-role").value,
       notes: q("us-notes").value.trim(),
     };
+    if (root.querySelector("[data-owner-code]")) {
+      const codes = [...root.querySelectorAll("[data-owner-code]:checked")].map((x) => x.dataset.ownerCode);
+      attrs.property_owner_of = codes.join("; ");
+      if (attrs.property_owner_of.length > 250) throw new Error("That's too many groups to store for one person.");
+    }
     if (!editing) {
       await addUser(attrs);
       toast("Person added.", "success");
@@ -258,4 +266,15 @@ function openUserDialog(row) {
     S.render.users && S.render.users();
   }
   return m;
+}
+
+/** "Property owner of" checkboxes for the person dialog (only when the Owners table and the Users field exist). */
+function ownerPicker(row) {
+  if (!S.ownersReady) return "";
+  if (!usersHasOwnerField()) return `<p class="hint">To tie people to property owner groups, add the <code>property_owner_of</code> field (Settings → Add all missing fields).</p>`;
+  if (!S.owners.length) return `<p class="hint">No property owner groups yet (Settings → Property owners).</p>`;
+  const mine = new Set(ownedList(row).map((c) => c.toLowerCase()));
+  return `<fieldset><legend>Property owner of</legend>
+    <div class="check-grid">${S.owners.map((o) => `<label class="check"><input type="checkbox" data-owner-code="${esc(o.code)}" ${mine.has(o.code.toLowerCase()) ? "checked" : ""} /> ${esc(o.name)}</label>`).join("")}</div>
+    <p class="hint">Tick the groups this person manages. Group staff can receive, move, stage and ship only those groups' stock. Leave empty for general warehouse staff (all stock). Administrators always handle everything.${ownersActive() ? "" : " Property owners aren't switched on yet (Settings)."}</p></fieldset>`;
 }

@@ -13,6 +13,7 @@ import { CONFIG } from "./config.js";
 import { esriRequest, applyEdits } from "./shared/esri-client.js";
 import { S } from "./state.js";
 import { isPicklineZone } from "./loc.js";
+import { layerHasOwner } from "./owners.js";
 
 export class TransactionApplyError extends Error {}
 
@@ -27,10 +28,11 @@ export function eqClause(field, val) {
   return v === "" ? `(${field} IS NULL OR ${field} = '')` : `${field} = '${q(v)}'`;
 }
 
-export function buildSegmentWhere(site, sku, lot, attrs, prefix) {
+export function buildSegmentWhere(site, sku, lot, attrs, prefix, owner = undefined) {
   const clauses = [eqClause("site", site), eqClause("item_sku", sku)];
   for (const [t, b] of Object.entries(SEGMENT_FIELD_MAP)) clauses.push(eqClause(b, attrs[`${prefix}${t}`]));
   clauses.push(eqClause("lot_number", lot));
+  if (owner !== undefined) clauses.push(eqClause("property_owner", owner)); // same item, shelf and lot owned by two groups = two rows
   return clauses.join(" AND ");
 }
 
@@ -86,6 +88,8 @@ export async function applyToBalance(attrs, { now = Date.now() } = {}) {
   const site = attrs.site || CONFIG.SITE;
   const sku = attrs.item_sku;
   const lot = attrs.lot;
+  // Property owner is part of the row's identity when the balance layer has the field (blank owner matches blank).
+  const owner = layerHasOwner("bal") ? String(attrs.property_owner || "").trim() : undefined;
   const gid = String(attrs.globalid || "").replace(/[{}]/g, "").toLowerCase();
 
   // Idempotency: if a balance row already carries this transaction's id, it was applied (e.g. the
@@ -97,7 +101,7 @@ export async function applyToBalance(attrs, { now = Date.now() } = {}) {
 
   const planned = [];
   for (const [prefix, delta] of moves) {
-    const rows = await queryBalance(buildSegmentWhere(site, sku, lot, attrs, prefix));
+    const rows = await queryBalance(buildSegmentWhere(site, sku, lot, attrs, prefix, owner));
     const existing = rows[0] || null;
     const label = segmentLabel(attrs, prefix);
     let next;
@@ -129,6 +133,7 @@ export async function applyToBalance(attrs, { now = Date.now() } = {}) {
       location_label: label,
       item_sku: sku,
       lot_number: lot || "",
+      property_owner: owner,
       category: attrs.category,
       item: attrs.item,
       make: attrs.make,

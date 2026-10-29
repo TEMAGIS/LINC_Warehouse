@@ -14,6 +14,7 @@ import { ci, uomForTxn } from "./units.js";
 import { txnLocationAttrs, balanceCode, isPicklineCode, codeLabel } from "./loc.js";
 import { loadBalances, loadTransactions } from "./data.js";
 import { applyToBalance } from "./balance.js";
+import { ownersActive, canActOn, isScoped, sameOwner, ownerName, myOwnerCodes, receiveChoices } from "./owners.js";
 
 export const TXN_TYPES = ["Receive", "Move", "Ship"];
 
@@ -36,6 +37,7 @@ export function buildTxnAttrs(line) {
     quantity: Math.round(Number(line.qty)),
     unit_of_measure: lib ? uomForTxn(lib) : line.unit || "",
     lot: line.lot ? String(line.lot).trim() : "",
+    ...(ownersActive() ? { property_owner: line.owner ? String(line.owner).trim() : "" } : {}),
     transaction_datetime: Date.now(),
     firstname: S.me.first,
     lastname: S.me.last,
@@ -72,28 +74,34 @@ export function fitToLayer(attrs, info) {
 export function validateLines(lines) {
   const errors = [];
   const running = new Map(); // sku|code|lot -> quantity still available after earlier lines
-  const key = (sku, code, lot) => `${String(sku).trim()}|${code}|${String(lot || "").trim()}`;
-  const startQty = (sku, code, lot) => {
-    const r = S.balances.find((b) => String(b.item_sku || "").trim() === String(sku).trim() && balanceCode(b) === code && sameLot(b.lot_number, lot));
+  const owned = ownersActive();
+  const key = (sku, code, lot, owner) => `${String(sku).trim()}|${code}|${String(lot || "").trim()}|${owned ? String(owner || "").trim().toLowerCase() : ""}`;
+  const startQty = (sku, code, lot, owner) => {
+    const r = S.balances.find((b) => String(b.item_sku || "").trim() === String(sku).trim() && balanceCode(b) === code && sameLot(b.lot_number, lot) && (!owned || sameOwner(b.property_owner, owner)));
     return r ? Number(r.quantity_on_hand) || 0 : 0;
   };
   lines.forEach((l, i) => {
     const n = lines.length > 1 ? `Line ${i + 1}: ` : "";
     if (!l.sku) errors.push(`${n}scan or choose an item.`);
+    if (owned) {
+      if (l.type === "Receive" && !l.owner && isScoped()) errors.push(`${n}choose the property owner.`);
+      if (l.type === "Receive" && l.owner && !receiveChoices().some((o) => sameOwner(o.code, l.owner))) errors.push(`${n}you can't receive stock for that property owner.`);
+      if (l.type !== "Receive" && !canActOn(l.owner)) errors.push(`${n}that stock belongs to ${l.owner ? ownerName(l.owner) : "no group"}. You can only handle stock owned by ${myOwnerCodes().map(ownerName).join(", ")}.`);
+    }
     if (!(Number(l.qty) > 0) || Math.round(Number(l.qty)) !== Number(l.qty)) errors.push(`${n}quantity must be a whole number above 0.`);
     if ((l.type === "Receive" || l.type === "Move") && !l.to) errors.push(`${n}choose the destination location.`);
     if ((l.type === "Move" || l.type === "Ship") && !l.from) errors.push(`${n}choose the source location.`);
     if (l.type === "Ship" && l.from && !isPicklineCode(l.from)) errors.push(`${n}ships must come from the pick line. Stage it there first.`);
     if (l.type === "Move" && l.from && l.to && l.from === l.to) errors.push(`${n}from and to are the same location.`);
     if ((l.type === "Move" || l.type === "Ship") && l.from && l.sku && Number(l.qty) > 0) {
-      const k = key(l.sku, l.from, l.lot);
-      const have = running.has(k) ? running.get(k) : startQty(l.sku, l.from, l.lot);
+      const k = key(l.sku, l.from, l.lot, l.owner);
+      const have = running.has(k) ? running.get(k) : startQty(l.sku, l.from, l.lot, l.owner);
       if (Number(l.qty) > have) errors.push(`${n}only ${have} on hand at ${codeLabel(l.from)} — can't take ${l.qty}.`);
       running.set(k, have - Number(l.qty));
     }
     if (l.type === "Move" && l.to) {
-      const k = key(l.sku, l.to, l.lot);
-      const have = running.has(k) ? running.get(k) : startQty(l.sku, l.to, l.lot);
+      const k = key(l.sku, l.to, l.lot, l.owner);
+      const have = running.has(k) ? running.get(k) : startQty(l.sku, l.to, l.lot, l.owner);
       running.set(k, have + Number(l.qty));
     }
   });
