@@ -90,6 +90,18 @@ async function onReady({ me, profile }) {
 
   try { await loadShipments(); } catch (err) { console.warn(err); }
 
+  // Tables fill the rest of the window (instead of a fixed guess) so there is no empty band under them.
+  const fitTables = () => {
+    document.querySelectorAll("main.screen:not([hidden]) .table-wrap.tall").forEach((w) => {
+      w.style.maxHeight = "";
+      const top = w.getBoundingClientRect().top + window.scrollY;
+      w.style.maxHeight = `${Math.max(220, window.innerHeight - top - 64)}px`;
+    });
+  };
+  let fitQueued = false;
+  const queueFit = () => { if (fitQueued) return; fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fitTables(); }); };
+  new MutationObserver(queueFit).observe(document.body, { childList: true, subtree: true });
+  window.addEventListener("resize", queueFit);
   S.actions.refresh = () => refresh();
   S.actions.switchTab = switchTab;
   S.actions.reloadBalances = async () => { await loadBalances(); await refresh(); };
