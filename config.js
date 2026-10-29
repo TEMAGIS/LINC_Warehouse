@@ -26,6 +26,15 @@ export const CONFIG = {
     library: "2d5dbbe0ec8e4f958aa20ed06ec505bc",      // Barcode Library (the EDITABLE layer; the old 426fb0b3… item is a view-only copy)
   },
 
+  // View-only copies of the same layers. If an account can't open the editable item above (it isn't
+  // shared with them), the app falls back to the view-only copy and runs read-only instead of locking
+  // them out. Settings explains why. Remove an entry to turn the fallback off for that layer.
+  VIEW_ITEM_IDS: {
+    transactions: "6dfb43b544cb4d2bb4a13e2b1187b5f5",
+    balance: "812418a81b474a4fbc2247d2fbd44061",
+    library: "426fb0b37352474cbb6c38d5335e275b",
+  },
+
   // Users layer of the Assigned Inventory Console. Only used to recognise Inventory
   // Administrators (permissions = "Property Officer") for the Settings tab.
   USERS_LAYER_URL:

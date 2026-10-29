@@ -15,6 +15,8 @@ export const S = {
   ownersReady: false, // the Owners table exists in the shipments service
   tab: "stock",
   urls: { bal: "", txn: "", lib: "" },
+  itemUsed: {},     // layer key -> ArcGIS item id actually opened (editable, or the view-only fallback)
+  usingView: {},    // layer key -> reason, when the view-only copy had to be used
   info: { bal: null, txn: null, lib: null },   // getLayerInfo results (fields, objectIdField, capabilities)
   balances: [],
   txns: [],

@@ -248,6 +248,10 @@ function issues() {
   const items = appItems();
   for (const it of items) {
     if (it.need !== "edit" || it.key === "ship") continue;
+    if (S.usingView[it.key]) {
+      out.push({ title: `Using the view-only copy of ${it.label}`, body: `Your account can't open the editable ${it.label} item (ArcGIS says: “${S.usingView[it.key]}”), so the app opened the view-only copy instead and you can look but not change anything. Fix: share the editable item with your group in ArcGIS Online.`, why: it.editableId });
+      continue;
+    }
     const a = capsAccess(it.caps);
     if (!S.info[it.key]) out.push({ title: `Couldn't read ${it.label}`, body: "The app couldn't open this layer, so features that use it won't work. Check that the item ID in config.js is right and that the item is shared with you.", why: it.id });
     else if (a.known && !a.edit) out.push({

@@ -26,11 +26,12 @@ export function capsAccess(caps) {
 /** The items the app uses, with the layer URL and the capabilities this account has on it. */
 export function appItems() {
   const ids = CONFIG.ITEM_IDS || {};
+  const used = (k, dflt) => S.itemUsed[k] || dflt;
   const caps = (k) => (S.info[k] && S.info[k].raw && S.info[k].raw.capabilities) || "";
   return [
-    { key: "bal", label: "Inventory Balance", role: "Stock on hand: one row per item, location, lot and owner", id: ids.balance, url: S.urls.bal, caps: caps("bal"), need: "edit" },
-    { key: "txn", label: "Transactions", role: "Every receive, move and ship", id: ids.transactions, url: S.urls.txn, caps: caps("txn"), need: "edit" },
-    { key: "lib", label: "Barcode Library", role: "Item catalogue (barcode, unit, gallons)", id: ids.library, url: S.urls.lib, caps: caps("lib"), need: "edit" },
+    { key: "bal", label: "Inventory Balance", role: "Stock on hand: one row per item, location, lot and owner", id: used("bal", ids.balance), editableId: ids.balance, url: S.urls.bal, caps: caps("bal"), need: "edit" },
+    { key: "txn", label: "Transactions", role: "Every receive, move and ship", id: used("txn", ids.transactions), editableId: ids.transactions, url: S.urls.txn, caps: caps("txn"), need: "edit" },
+    { key: "lib", label: "Barcode Library", role: "Item catalogue (barcode, unit, gallons)", id: used("lib", ids.library), editableId: ids.library, url: S.urls.lib, caps: caps("lib"), need: "edit" },
     { key: "ship", label: CONFIG.SHIPMENTS_SERVICE_TITLE, role: "Shipment plans and lines, warehouse users, property owners", id: S.shipments.itemId || CONFIG.SHIPMENTS_ITEM_ID || "", url: S.shipments.url, caps: S.shipments.caps || "", need: "edit" },
     { key: "asg", label: "Assigned Inventory Users", role: "Read only: recognises Inventory Administrators", id: CONFIG.USERS_ITEM_ID || "", url: CONFIG.USERS_LAYER_URL, caps: "", need: "view" },
   ];

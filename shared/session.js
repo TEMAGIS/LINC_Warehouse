@@ -75,7 +75,7 @@ export async function startSession({ allowedEmails = [], probe = null, noAccessM
         } catch (err) {
           if (err && (err.code === 498 || err.code === 499)) throw err;
           console.warn("Access probe failed:", err);
-          return blocked(noAccessMessage || "Your ArcGIS account can't open the data this page needs.");
+          return blocked((noAccessMessage || "Your ArcGIS account can't open the data this page needs.") + (err && err.detail ? ` Details: ${err.detail}` : ""));
         }
       }
       started = true;
