@@ -94,3 +94,7 @@
 .pl-cart .cart-summary { margin: 0.5rem 0 0.8rem; font-weight: 600; }
 .pl-cart fieldset { margin-top: 0.6rem; }
 @media (max-width: 860px) { .pl-two { grid-template-columns: minmax(0, 1fr); } .pl-avail { max-height: 18rem; } }
+
+/* Add person search: highlighted top match, disabled "already on the list" rows */
+.ip-opt.ip-first { border-color: var(--navy, #002868); }
+.ip-opt[disabled] { opacity: 0.55; cursor: default; }

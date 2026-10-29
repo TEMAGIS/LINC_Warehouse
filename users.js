@@ -15,28 +15,43 @@ import { S } from "./state.js";
 import { ownedList, ownerName, usersHasOwnerField, ownersActive } from "./owners.js";
 
 let groupCache = null;
+/** "sarah.matson@tn.gov" -> "Sarah Matson" (used when ArcGIS has no real full name for the account). */
+export function niceName(p) {
+  const fn = String(p.fullName || "").trim();
+  if (fn && fn.toLowerCase() !== String(p.username || "").toLowerCase() && !fn.includes("@")) return fn;
+  const local = String(p.email || p.username || "").split("@")[0].replace(/_[a-z]+$/i, "");
+  return local.split(/[._\-\s]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase()).join(" ") || fn;
+}
+
+async function loadGroup() {
+  if (groupCache) return groupCache;
+  const base = `${CONFIG.ARCGIS_PORTAL_URL}/sharing/rest/community`;
+  const g = await esriRequest(`${base}/groups/${CONFIG.MEMBER_GROUP_ID}/users`, {}, { method: "GET" });
+  const names = [...new Set([g.owner, ...(g.admins || []), ...(g.users || [])].filter(Boolean))];
+  groupCache = (await Promise.all(names.map(async (username) => {
+    try {
+      const u = await esriRequest(`${base}/users/${encodeURIComponent(username)}`, {}, { method: "GET" });
+      return { username, fullName: u.fullName || username, email: u.email || (username.includes("@") ? username : "") };
+    } catch { return { username, fullName: username, email: username.includes("@") ? username : "" }; }
+  }))).map((p) => ({ ...p, fullName: niceName(p) })).sort((x, y) => x.fullName.localeCompare(y.fullName));
+  return groupCache;
+}
+/** Start loading the group in the background (called when Add person opens). */
+export function warmGroup() { if (CONFIG.MEMBER_GROUP_ID && !groupCache) loadGroup().catch(() => {}); }
+
 /**
  * People to offer in "Add person". With CONFIG.MEMBER_GROUP_ID set, only members of that ArcGIS
  * group (owner, admins, users); otherwise anyone in the organization. Returns
- * {people, restricted, error}. Group members are loaded once, then filtered by the typed text.
+ * {people, restricted, error}. Group members are loaded once, then filtered by the typed text
+ * (an empty box lists the first few, since the group is small).
  */
 export async function findPeople(text) {
   const t = lc(text);
-  if (t.length < 2) return { people: [], restricted: !!CONFIG.MEMBER_GROUP_ID };
-  if (!CONFIG.MEMBER_GROUP_ID) return { people: await searchOrgMembers(text), restricted: false };
+  if (!CONFIG.MEMBER_GROUP_ID) return t.length < 2 ? { people: [], restricted: false } : { people: (await searchOrgMembers(text)).map((p) => ({ ...p, fullName: niceName(p) })), restricted: false };
   try {
-    if (!groupCache) {
-      const base = `${CONFIG.ARCGIS_PORTAL_URL}/sharing/rest/community`;
-      const g = await esriRequest(`${base}/groups/${CONFIG.MEMBER_GROUP_ID}/users`, {}, { method: "GET" });
-      const names = [...new Set([g.owner, ...(g.admins || []), ...(g.users || [])].filter(Boolean))];
-      groupCache = await Promise.all(names.map(async (username) => {
-        try {
-          const u = await esriRequest(`${base}/users/${encodeURIComponent(username)}`, {}, { method: "GET" });
-          return { username, fullName: u.fullName || username, email: u.email || (username.includes("@") ? username : "") };
-        } catch { return { username, fullName: username, email: username.includes("@") ? username : "" }; }
-      }));
-    }
-    return { people: groupCache.filter((p) => `${p.fullName} ${p.username} ${p.email}`.toLowerCase().includes(t)).slice(0, 8), restricted: true };
+    const all = await loadGroup();
+    const hits = t ? all.filter((p) => `${p.fullName} ${p.username} ${p.email}`.toLowerCase().includes(t)) : all;
+    return { people: hits.slice(0, 8), more: Math.max(0, hits.length - 8), restricted: true };
   } catch (err) {
     groupCache = null;
     return { people: [], restricted: true, error: err.message };
@@ -208,27 +223,49 @@ function openUserDialog(row) {
 
   if (!editing) {
     const find = q("us-find");
-    find.addEventListener("input", debounce(async () => {
-      const res = await findPeople(find.value);
-      const found = res.people;
-      q("us-found").innerHTML = res.error
+    const found = q("us-found");
+    const onList = (f) => S.users.some((u) => (f.email && lc(u.email) === lc(f.email)) || (f.username && lc(u.username) === lc(f.username)));
+    let seq = 0;
+    const show = async () => {
+      const mine = ++seq;
+      const text = find.value;
+      if (CONFIG.MEMBER_GROUP_ID && !groupCache) found.innerHTML = `<div class="sub">Loading the warehouse group…</div>`;
+      const res = await findPeople(text);
+      if (mine !== seq) return; // a newer keystroke is already being answered
+      found._found = res.people;
+      found.innerHTML = res.error
         ? `<div class="sub">Couldn't read the group: ${esc(res.error)}. Type the details below.</div>`
-        : !found.length && res.restricted && lc(find.value).length >= 2
-          ? `<div class="sub">No match in the warehouse group. Ask an ArcGIS administrator to add them to the group first, or type the details below.</div>`
-        : found.length
-        ? found.map((f, i) => `<button type="button" class="ip-opt" data-i="${i}"><strong>${esc(f.fullName)}</strong> <span class="sub">${esc(f.username)}${f.email ? " · " + esc(f.email) : ""}</span></button>`).join("")
-        : "";
-      q("us-found")._found = found;
-    }, 250));
-    q("us-found").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-i]");
-      if (!b) return;
-      const f = q("us-found")._found[Number(b.dataset.i)];
+        : !res.people.length
+          ? (lc(text).length >= (CONFIG.MEMBER_GROUP_ID ? 1 : 2)
+              ? `<div class="sub">${res.restricted ? "No match in the warehouse group. Ask an ArcGIS administrator to add them to the group first, or type the details below." : "No match."}</div>` : "")
+          : res.people.map((f, i) => `<button type="button" class="ip-opt${i === 0 ? " ip-first" : ""}" data-i="${i}" ${onList(f) ? "disabled" : ""}><strong>${esc(f.fullName)}</strong> <span class="sub">${esc(f.email || f.username)}${onList(f) ? " · already on the list" : ""}</span></button>`).join("")
+            + (res.more ? `<div class="sub">${res.more} more. Keep typing to narrow it down.</div>` : "");
+    };
+    const pick = (f) => {
+      if (!f || onList(f)) return;
       q("us-name").value = f.fullName || "";
       q("us-email").value = f.email || "";
       q("us-username").value = f.username || "";
-      q("us-found").innerHTML = "";
+      find.value = "";
+      found._found = [];
+      found.innerHTML = `<div class="ip-picked"><span>Selected <strong>${esc(f.fullName)}</strong> <span class="sub">${esc(f.email || f.username)}</span></span><button type="button" data-again>Change</button></div>`;
+      (q("us-role") || {}).focus && q("us-role").focus();
+    };
+    warmGroup();
+    find.addEventListener("input", debounce(show, 150));
+    find.addEventListener("focus", () => { if (CONFIG.MEMBER_GROUP_ID && !find.value) show(); });
+    find.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault(); // Enter picks the top match instead of submitting
+      const f = (found._found || []).find((x) => !onList(x));
+      if (f) pick(f);
     });
+    found.addEventListener("click", (e) => {
+      if (e.target.closest("[data-again]")) { found.innerHTML = ""; find.focus(); return; }
+      const b = e.target.closest("[data-i]");
+      if (b) pick((found._found || [])[Number(b.dataset.i)]);
+    });
+    find.focus();
   }
 
   async function save() {
