@@ -110,3 +110,28 @@
 .plan-page .pl-avail { max-height: none; overflow: visible; padding: 0; }
 .plan-page .cart fieldset { margin-top: 0.8rem; }
 .plan-page .cart .two-col { grid-template-columns: 1fr 1fr; }
+
+/* Item panel (slides in from the right on the Stock tab) */
+.row-click { cursor: pointer; }
+.row-click:hover td { background: #f3f6fb; }
+.scrim { position: fixed; inset: 0; background: rgba(10, 20, 40, 0.35); z-index: 90; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 460px; max-width: 100%; background: #fff; z-index: 91; box-shadow: -8px 0 30px rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; }
+.drawer header { padding: 0.9rem 1.1rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.6rem; align-items: flex-start; }
+.drawer header h2 { font-size: 1.15rem; margin: 0.1rem 0; }
+.drawer .body { padding: 1rem 1.1rem; overflow: auto; flex: 1; }
+.drawer .body h3 { margin: 1.2rem 0 0.4rem; font-size: 1rem; }
+.drawer .card { background: var(--card, #fff); border: 1px solid var(--border); border-radius: var(--radius, 8px); padding: 0.8rem 0.9rem; margin-bottom: 0.8rem; }
+.drawer .card.ship { background: #f7f9fd; }
+.drawer-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; margin: 0 0 0.8rem; }
+.drawer .card .drawer-actions { margin: 0.7rem 0 0; }
+.dr-total { margin-bottom: 0.5rem; }
+.dr-num { font-size: 1.8rem; font-weight: 700; color: var(--navy, #002868); }
+.dr-btns { white-space: nowrap; text-align: right; }
+.dr-btns button { margin-left: 0.25rem; padding: 0.2rem 0.55rem; font-size: 0.82rem; }
+.dr-plans { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.dr-plans li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid #eceff2; }
+.drawer .kv { display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.3rem 0.8rem; margin: 0; }
+.drawer .kv dt { color: var(--muted); }
+.drawer .kv dd { margin: 0; }
+.timeline { list-style: none; margin: 0; padding: 0; }
+.timeline li { padding: 0.45rem 0; border-top: 1px solid #eceff2; }

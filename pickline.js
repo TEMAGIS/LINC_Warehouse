@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Pick line tab: what's staged, shipment plans, and shipping.
+// Ship tab: what's staged on the pick line, shipment plans, and shipping.
 // Ship is only possible from here: a shipment plan names the recipient and the ship-to
 // location, lists the pick-line stock going out, and "Ship" writes one Ship transaction per line.
 // ---------------------------------------------------------------------------
@@ -7,7 +7,7 @@ import { CONFIG } from "./config.js";
 import { openModal, confirmDialog, toast } from "./shared/ui.js";
 import { $, esc, fmtDate, fmtDateTime } from "./shared/util.js";
 import { S, itemName, itemCell, findLib, normSku } from "./state.js";
-import { balanceCode, codeLabel, isPicklineRow, picklineLanes } from "./loc.js";
+import { balanceCode, codeLabel, isPicklineRow, isPicklineCode, picklineLanes } from "./loc.js";
 import { onHand } from "./data.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
 import { submitTransactions, summarizeResults } from "./txn.js";
@@ -194,7 +194,7 @@ export function availableRows(editorLines, { exceptShipmentId = "" } = {}) {
     .filter((x) => x.free > 0);
 }
 
-export function openPlan(header) {
+export function openPlan(header, { preset = null } = {}) {
   const existing = header || null;
   const readOnly = !!existing && [PLAN_STATUS.SHIPPED, PLAN_STATUS.CANCELLED].includes(existing.status);
   const canEdit = S.canEdit && !readOnly;
@@ -208,6 +208,10 @@ export function openPlan(header) {
     <div class="req-layout${canEdit ? "" : " pl-one"}">
       ${canEdit ? `<section class="catalog" aria-label="Pick line">
         <div class="catalog-tools">
+          <div class="pill-row" id="pl-src" role="group" aria-label="Where to add items from">
+            <button type="button" class="pill active" data-src="pick" aria-pressed="true">Pick line</button>
+            <button type="button" class="pill" data-src="inv" aria-pressed="false">Inventory</button>
+          </div>
           <input id="pl-find" type="search" placeholder="Search the pick line: item, make, model, barcode, lot…" autocomplete="off" aria-label="Search the pick line" />
         </div>
         <div id="pl-avail" class="catalog-list pl-avail" aria-live="polite"></div>
@@ -247,8 +251,13 @@ export function openPlan(header) {
     return h;
   };
 
-  // Pick-line stock this plan may draw on (other plans' promises already taken off), as cards.
-  const catRows = () => picklineRows().filter((r) => canActOn(r.property_owner)).map((r) => {
+  // Stock this plan may draw on (other plans' promises already taken off). "pick" = staged on the pick line;
+  // "inv" = still in storage, which is staged to the pick line automatically when the plan ships.
+  let source = "pick";
+  const rowsFor = (src) => (src === "inv"
+    ? S.balances.filter((r) => !isPicklineRow(r) && onHand(r) > 0).sort((a, b) => itemName(a).localeCompare(itemName(b)) || balanceCode(a).localeCompare(balanceCode(b), undefined, { numeric: true }))
+    : picklineRows());
+  const catRows = (src = source) => rowsFor(src).filter((r) => canActOn(r.property_owner)).map((r) => {
     const code = balanceCode(r);
     const base = onHand(r) - plannedQty(r.item_sku, code, r.lot_number, { exceptShipmentId: id, ...ownOpt(r) });
     return { r, code, base, k: lineKey(r.item_sku, code, r.lot_number, r.property_owner) };
@@ -278,7 +287,7 @@ export function openPlan(header) {
     return `<article class="item-card${ln ? " in-cart" : ""}" data-ck="${i}">
       <div class="item-main">${ln ? `<span class="in-cart-badge" title="In this plan">✓ In plan</span>` : ""}${itemCell(x.r, findLib(x.r.item_sku))}
         <div class="item-meta"><span class="mono">${esc(codeLabel(x.code))}</span>${x.r.lot_number ? " · lot " + esc(x.r.lot_number) : ""}${own}</div>
-        <div class="item-stock stock-ok">${fmtNum(x.base)} ${esc(unit)} free</div></div>
+        <div class="item-stock stock-ok">${fmtNum(x.base)} ${esc(unit)} free${isPicklineCode(x.code) ? "" : ` <span class="tag">In storage</span> <span class="sub">staged to the pick line when it ships</span>`}</div></div>
       <div class="item-actions">${ln ? stepper(ln.quantity, `data-ck="${i}"`, x.base) : `<button type="button" class="btn-add" data-add data-ck="${i}">Add</button>`}</div>
     </article>`;
   };
@@ -293,7 +302,7 @@ export function openPlan(header) {
       return `${itemName(x.r)} ${x.r.item_sku || ""} ${x.r.make || ""} ${x.r.model || ""} ${x.r.lot_number || ""} ${codeLabel(x.code)} ${ownerName(x.r.property_owner)} ${lib ? Object.values(lib).join(" ") : ""}`.toLowerCase().includes(term);
     });
     host.innerHTML = shown.length ? shown.map(cardHtml).join("")
-      : `<div class="empty">${term ? "Nothing on the pick line matches that." : "Nothing free on the pick line. Stage stock to it first."}</div>`;
+      : `<div class="empty">${term ? `Nothing ${source === "inv" ? "in inventory" : "on the pick line"} matches that.` : source === "inv" ? "No free stock in storage." : "Nothing free on the pick line. Switch to Inventory to add stock straight from storage."}</div>`;
   }
 
   function renderLines() {
@@ -303,7 +312,7 @@ export function openPlan(header) {
           const edit = canEdit && l.status !== "Shipped";
           return `<div class="cart-line" data-li="${i}">
             <div class="cart-line-main"><div class="cart-line-title">${esc(l.item_desc || l.item_sku)}</div>
-              <div class="cart-line-sub">${esc(l.item_sku || "")} · <span class="mono">${esc(codeLabel(l.from_location))}</span>${l.lot ? " · lot " + esc(l.lot) : ""}${l.property_owner ? ` · <span class="owner-tag">${esc(ownerName(l.property_owner))}</span>` : ""}${l.status && l.status !== "Planned" ? ` · ${esc(l.status)}` : ""}${l.note ? `<div>${esc(l.note)}</div>` : ""}</div></div>
+              <div class="cart-line-sub">${esc(l.item_sku || "")} · <span class="mono">${esc(codeLabel(l.from_location))}</span>${isPicklineCode(l.from_location) ? "" : ` <span class="tag">from inventory</span>`}${l.lot ? " · lot " + esc(l.lot) : ""}${l.property_owner ? ` · <span class="owner-tag">${esc(ownerName(l.property_owner))}</span>` : ""}${l.status && l.status !== "Planned" ? ` · ${esc(l.status)}` : ""}${l.note ? `<div>${esc(l.note)}</div>` : ""}</div></div>
             ${edit ? stepper(l.quantity, `data-li="${i}"`) : `<div class="num">${fmtNum(l.quantity)}${l.unit ? ` <span class="sub">${esc(l.unit)}</span>` : ""}</div>`}
             ${edit ? `<button type="button" class="icon-btn" data-rm="${i}" aria-label="Remove line">&times;</button>` : "<span></span>"}</div>`;
         }).join("") + `<div class="cart-summary">${lines.length} line${lines.length === 1 ? "" : "s"} · ${fmtNum(lines.reduce((n, l) => n + Number(l.quantity || 0), 0))} units</div>`
@@ -313,6 +322,17 @@ export function openPlan(header) {
   if (canEdit) {
     renderAvail();
     q("#pl-find").addEventListener("input", renderAvail);
+    const setSource = (src) => {
+      source = src;
+      q("#pl-src").querySelectorAll("[data-src]").forEach((b) => { const on = b.dataset.src === src; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
+      renderAvail();
+    };
+    q("#pl-src").addEventListener("click", (e) => { const b = e.target.closest("[data-src]"); if (b) setSource(b.dataset.src); });
+    if (preset && preset.sku) {
+      const has = catRows("pick").some((x) => normSku(x.r.item_sku) === normSku(preset.sku));
+      q("#pl-find").value = preset.sku;
+      setSource(has ? "pick" : "inv");
+    }
     // Catalog cards (left): Add / − / + / typed quantity
     q("#pl-avail").addEventListener("click", (e) => {
       const el = e.target.closest("[data-add],[data-inc],[data-dec]");
@@ -332,7 +352,7 @@ export function openPlan(header) {
       const l = lines[i];
       if (!l) return;
       qty = Math.max(0, Math.floor(Number(qty) || 0));
-      const x = catRows().find((c) => c.k === lineKey(l.item_sku, l.from_location, l.lot, l.property_owner));
+      const x = [...catRows("pick"), ...catRows("inv")].find((c) => c.k === lineKey(l.item_sku, l.from_location, l.lot, l.property_owner));
       if (x && qty > x.base) { toast(`Only ${fmtNum(x.base)} free of that line.`, "error"); qty = x.base; }
       if (qty <= 0) lines.splice(i, 1); else l.quantity = qty;
       renderLines(); renderAvail();
@@ -376,10 +396,11 @@ export function openPlan(header) {
     const errs = validateHeader(h, lines);
     if (errs.length) throw new Error(errs.join(" "));
     const pending = lines.filter((l) => l.status !== "Shipped");
+    const fromStorage = pending.filter((l) => !isPicklineCode(l.from_location)).length;
     const total = pending.reduce((n, l) => n + Number(l.quantity) - (Number(l.qty_shipped) || 0), 0);
     const ok = await confirmDialog({
       title: "Ship now?",
-      message: `Ship ${fmtNum(total)} item(s) in ${pending.length} line(s) to ${h.ship_to_name}? This takes them out of inventory.`,
+      message: `Ship ${fmtNum(total)} item(s) in ${pending.length} line(s) to ${h.ship_to_name}? This takes them out of inventory.${fromStorage ? ` ${fromStorage} line(s) are still in storage and will be moved to the pick line first.` : ""}`,
       confirmLabel: "Ship",
     });
     if (!ok) return false;
@@ -399,24 +420,45 @@ export async function shipPlan(header) {
   const id = header.shipment_id;
   const planLines = linesOf(id).filter((l) => l.status !== "Shipped");
   const shipTo = [header.ship_to_name, header.ship_to_address, header.ship_to_city, header.ship_to_state].filter(Boolean).join(", ").slice(0, 250);
-  const txnLines = planLines.map((l) => ({
-    type: "Ship", sku: l.item_sku, name: l.item_desc, qty: Number(l.quantity) - (Number(l.qty_shipped) || 0), lot: l.lot || "",
-    from: l.from_location, owner: l.property_owner || "", extra: { shipment_id: id, ship_to: shipTo },
-  }));
+  const lane = picklineLanes()[0];
+  // Lines still in storage are first moved to the pick line (a Move), then shipped from there (a Ship).
+  const txnLines = [];
+  const plan = planLines.map((l) => {
+    const qty = Number(l.quantity) - (Number(l.qty_shipped) || 0);
+    let from = l.from_location, moveIdx = null;
+    if (!isPicklineCode(from)) {
+      if (!lane) throw new Error("There is no pick-line lane to stage stock into.");
+      moveIdx = txnLines.length;
+      txnLines.push({ type: "Move", sku: l.item_sku, name: l.item_desc, qty, lot: l.lot || "", from, to: lane.code, owner: l.property_owner || "", extra: { shipment_id: id } });
+      from = lane.code;
+    }
+    const shipIdx = txnLines.length;
+    txnLines.push({ type: "Ship", sku: l.item_sku, name: l.item_desc, qty, lot: l.lot || "", from, owner: l.property_owner || "", extra: { shipment_id: id, ship_to: shipTo } });
+    return { line: l, moveIdx, shipIdx, from };
+  });
   const results = await submitTransactions(txnLines);
   const patches = [];
-  results.forEach((r, i) => {
-    const line = planLines[i];
-    if (r.ok) patches.push({ line, patch: { status: "Shipped", qty_shipped: Number(line.quantity), transaction_gid: r.gid || "", note: r.status === "pending" ? "Saved; waiting to apply to inventory" : "" } });
-    else patches.push({ line, patch: { status: "Failed", note: String(r.message || "").slice(0, 250) } });
-  });
+  for (const p of plan) {
+    const ship = results[p.shipIdx];
+    const move = p.moveIdx === null ? null : results[p.moveIdx];
+    if (ship && ship.ok) {
+      patches.push({ line: p.line, patch: { status: "Shipped", qty_shipped: Number(p.line.quantity), transaction_gid: ship.gid || "", note: ship.status === "pending" || (move && move.status === "pending") ? "Saved; waiting to apply to inventory" : "" } });
+    } else if (ship) {
+      // The stock already moved to the pick line, so a retry ships from there.
+      patches.push({ line: p.line, patch: { status: "Failed", note: String(ship.message || "").slice(0, 250), ...(move && move.ok ? { from_location: p.from } : {}) } });
+    } else if (move && !move.ok) {
+      patches.push({ line: p.line, patch: { status: "Failed", note: `Couldn't stage from storage: ${String(move.message || "")}`.slice(0, 250) } });
+    } else if (move && move.ok) {
+      patches.push({ line: p.line, patch: { status: "Failed", note: "Staged to the pick line; ship it again.", from_location: p.from } });
+    }
+  }
   await patchLines(patches);
-  const allShipped = results.length === planLines.length && results.every((r) => r.ok);
-  const anyShipped = results.some((r) => r.ok);
+  const allShipped = plan.every((p) => results[p.shipIdx] && results[p.shipIdx].ok);
+  const anyShipped = plan.some((p) => results[p.shipIdx] && results[p.shipIdx].ok);
   await patchHeader(header, allShipped
     ? { status: PLAN_STATUS.SHIPPED, shipped_by: S.me.name, shipped_date: Date.now() }
     : { status: anyShipped ? PLAN_STATUS.PARTLY : PLAN_STATUS.READY });
-  const s = summarizeResults(results, planLines.length);
+  const s = summarizeResults(results, txnLines.length);
   toast(allShipped ? `Shipment ${id} shipped.` : s.text, allShipped ? s.kind : "error", 9000);
   await loadShipments();
   return results;

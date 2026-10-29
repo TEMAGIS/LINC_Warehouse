@@ -125,3 +125,8 @@ Tested in Node against a **mock** ArcGIS service (about 130 checks): location pa
 ## A separate mobile app later
 
 The pieces that matter are plain modules with no framework and little DOM: `loc.js` (location codes), `units.js`, `balance.js` and `txn.js` (writing transactions and applying them), `shipments.js`, `library.js` / `lists.js` (adding library items), `scanner.js`. A phone-first app that replaces the Survey123 form can import them as they are and bring only its own screens, so the rules stay identical in both.
+
+## Item panel and the Ship tab
+
+- **Item panel:** click any row on **Stock** and a panel opens on the right: where the item is and how much, **Receive more**, Move and **To pick line** per shelf, what is promised to shipment plans (with **Add to a new shipment plan** / **Add to <plan>**), the library details (Edit), and the item's recent transactions. Esc or the × closes it. Code: `drawer.js`.
+- **Ship tab:** the old Pick line tab is now **Ship**. A shipment plan is a full page; the left side has a **Pick line | Inventory** toggle (Pick line shown first). Items added from **Inventory** stay in storage until the plan ships; **Ship now** then moves each one to the pick line (a Move transaction) and ships it (a Ship transaction). If the ship step fails after the move, the line is pointed at the pick line so a retry just ships it.

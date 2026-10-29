@@ -73,6 +73,7 @@ export function initLibTab() {
 }
 
 export function renderLib() {
+  if (S.render.drawer) S.render.drawer(); // the item panel shows library details too
   const el = $("#screen-lib");
   const cats = [...new Set(S.library.map((r) => String(ci(r, "item_category") ?? "")).filter(Boolean))].sort();
   const canAdd = S.canEdit && libCanCreate();
@@ -125,7 +126,7 @@ function renderRows() {
 
 const opts = (list, cur, blank = "") => `<option value="">${esc(blank)}</option>` + list.map((v) => `<option value="${esc(v)}" ${String(cur ?? "") === v ? "selected" : ""}>${esc(v)}</option>`).join("");
 
-function openEditDialog(row) {
+export function openEditDialog(row) {
   const cur = (k) => ci(row, k) ?? "";
   const rawItem = String(cur("item"));
   const itemList = LIB_ITEMS.includes(rawItem) ? LIB_ITEMS : [rawItem, ...LIB_ITEMS].filter(Boolean);

@@ -49,7 +49,7 @@ const locBox = (id, label, value = "") =>
 // ---------------------------------------------------------------------------------------------
 // Receive
 // ---------------------------------------------------------------------------------------------
-export function openReceive({ again = false } = {}) {
+export function openReceive({ again = false, sku = "" } = {}) {
   let picked = null;
   const body = `
     <div id="rc-item"></div>
@@ -96,7 +96,12 @@ export function openReceive({ again = false } = {}) {
     $("rc-gal").textContent = g > 0 ? `≈ ${fmtGallons(g)} gallons` : "";
   };
   root.addEventListener("input", (e) => { if (e.target.id === "rc-qty") refreshGal(); });
-  picker.focus();
+  if (sku) {
+    const l = findLib(sku);
+    const hit = S.balances.find((r) => normSku(r.item_sku) === normSku(sku));
+    if (l || hit) picker.set({ sku: normSku(sku), lib: l, name: hit ? itemName(hit) : l ? String(ci(l, "item") ?? sku) : sku });
+    else picker.focus();
+  } else picker.focus();
 
   async function save() {
     if (!picked) throw new Error("Scan or choose the item first.");

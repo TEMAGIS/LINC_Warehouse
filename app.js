@@ -3,7 +3,7 @@
 //   1. Sign in with ArcGIS Online (OAuth + PKCE, shared/arcgis-auth.js).
 //   2. Resolve the three data layers; "can add transactions" = warehouse staff.
 //   3. Load balances, transactions, the Barcode Library, and (if it exists) shipment plans.
-//   4. Show Stock / Pick line / Transactions (+ Settings for Inventory Administrators).
+//   4. Show Stock / Ship / Transactions (+ Settings for Inventory Administrators).
 // ---------------------------------------------------------------------------
 import { CONFIG } from "./config.js";
 import { startSession } from "./shared/session.js";
@@ -14,6 +14,7 @@ import { resolveLayers, loadAllData, loadBalances, loadTransactions, lookupAdmin
 import { discoverShipments, loadShipments } from "./shipments.js";
 import { initStock } from "./stock.js";
 import { initPickline } from "./pickline.js";
+import { initDrawer } from "./drawer.js";
 import { initTransactions } from "./transactions.js";
 import { initSettings } from "./settings.js";
 import { initLibTab } from "./libtab.js";
@@ -44,6 +45,7 @@ async function refresh({ full = false } = {}) {
   if (full) { await Promise.all([loadBalances(), loadTransactions()]); try { await loadOwners(); } catch (err) { console.info("Owners reload skipped:", err.message); } }
   try { await loadShipments(); } catch (err) { console.warn("Shipments reload failed:", err); }
   S.render[S.tab] && S.render[S.tab]();
+  S.render.drawer && S.render.drawer();
   updateBadges();
 }
 
@@ -89,8 +91,9 @@ async function onReady({ me, profile }) {
   try { await loadShipments(); } catch (err) { console.warn(err); }
 
   S.actions.refresh = () => refresh();
+  S.actions.switchTab = switchTab;
   S.actions.reloadBalances = async () => { await loadBalances(); await refresh(); };
-  initStock(); initPickline(); initTransactions(); initSettings(); initUsers(); initLibTab();
+  initStock(); initPickline(); initDrawer(); initTransactions(); initSettings(); initUsers(); initLibTab();
 
   $("#user-label").textContent = `${S.me.name} · ${S.role}${isScoped() ? ` · ${myOwnerCodes().map(ownerName).join(", ")}` : ""}${S.role !== "View only" && !S.canEdit ? " (view only)" : ""}`;
   $("#readonly-badge").hidden = S.canEdit;

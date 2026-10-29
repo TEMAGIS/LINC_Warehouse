@@ -11,6 +11,7 @@ import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
 import { scanOnce } from "./scanner.js";
 import { openReceive, openMove, openStage } from "./dialogs.js";
 import { openAddToLibrary } from "./library.js";
+import { openDrawer } from "./drawer.js";
 import { openModal, toast } from "./shared/ui.js";
 import { ownersActive, canActOn, ownerName, ownerCodesInUse, sameOwner, setStockOwner } from "./owners.js";
 
@@ -42,7 +43,11 @@ export function initStock() {
   el.addEventListener("change", (e) => { if (e.target.id === "sk-owner") { F.owner = e.target.value; F.page = 1; renderRows(); } });
   el.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-act]");
-    if (!b) return;
+    if (!b) {
+      const tr = e.target.closest("tr[data-sku]");
+      if (tr && !e.target.closest("button, a, input, select")) openDrawer(tr.dataset.sku);
+      return;
+    }
     const a = b.dataset.act;
     if (a === "receive") openReceive();
     else if (a === "move") openMove();
@@ -112,7 +117,7 @@ function renderRows() {
         const mine = canActOn(r.property_owner);
         const labels = r.zone ? SEG_LABELS : SEG_LABELS.slice(1);
         const segVals = r.zone ? segs : segs.slice(1);
-        return `<tr>
+        return `<tr class="row-click" data-sku="${esc(normSku(r.item_sku))}">
           <td>${itemCell(r, lib)}</td>
           <td><span class="mono">${esc(codeLabel(code))}</span>${pl ? ` <span class="tag">Pick line</span>` : ""}
             <div class="sub">${labels.map((l, i) => `${l} ${esc(segVals[i] ?? "")}`).join(" · ")}</div></td>
@@ -129,7 +134,7 @@ function renderRows() {
 }
 
 /** Administrator: give a stock row an owner (see owners.js → setStockOwner). */
-function openSetOwner(row) {
+export function openSetOwner(row) {
   if (!row) return;
   const opts = S.owners.map((o) => `<option value="${esc(o.code)}" ${sameOwner(o.code, row.property_owner) ? "selected" : ""}>${esc(o.name)}</option>`).join("");
   openModal({
