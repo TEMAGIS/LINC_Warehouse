@@ -64,3 +64,14 @@
 .lr-other summary { cursor: pointer; font-weight: 600; color: var(--navy); margin-top: 0.8rem; }
 .lr-dups { margin: 0.3rem 0; padding-left: 1.1rem; font-size: 0.85rem; }
 .lr-dups li { margin-bottom: 0.25rem; }
+
+/* Stage dialog: total box and the fill button on one line, with room between label, box and button */
+.st-top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; margin: 0 0 0.75rem; }
+.st-top label { display: flex; flex-direction: column; gap: 0.3rem; margin: 0; }
+.st-top button { margin: 0; }
+
+/* Stock table: roomier On hand cell, narrower Lot column */
+.grid td.oh, .grid th.oh-h { min-width: 8rem; white-space: nowrap; padding-left: 1.25rem; }
+.oh .oh-q { display: block; font-size: 1.05rem; line-height: 1.3; }
+.oh .sub { margin-top: 0.15rem; line-height: 1.4; }
+.grid .col-lot { width: 5.5rem; }

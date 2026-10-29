@@ -171,7 +171,7 @@ export function openPlan(header) {
     </fieldset>
     <fieldset><legend>Items (from the pick line)</legend>
       <div id="pl-lines"></div>
-      ${canEdit ? `<div class="row" style="gap:.5rem;align-items:end;margin-top:.5rem;flex-wrap:wrap">
+      ${canEdit ? `<div style="display:flex;gap:.6rem;align-items:flex-end;margin-top:.5rem;flex-wrap:wrap">
         <label style="margin:0;flex:1;min-width:14rem">Add from the pick line<select id="pl-add-sel"></select></label>
         <label style="margin:0">Qty<input id="pl-add-qty" type="number" min="1" step="1" inputmode="numeric" data-qty style="width:6rem" /></label>
         <button type="button" id="pl-add">Add</button></div>` : ""}

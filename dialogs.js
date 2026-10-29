@@ -202,8 +202,8 @@ export function openStage({ sku = "" } = {}) {
   const body = `
     <div id="st-item"></div>
     <div id="st-detail" hidden>
-      <div class="row" style="gap:.6rem;align-items:end;margin-bottom:.4rem">
-        <label style="margin:0">Total to stage <input id="st-total" type="number" min="1" step="1" inputmode="numeric" data-qty style="width:7rem" /></label>
+      <div class="st-top">
+        <label>Total to stage <input id="st-total" type="number" min="1" step="1" inputmode="numeric" data-qty style="width:7rem" /></label>
         <button type="button" id="st-fill">Fill from oldest stock</button>
       </div>
       <div id="st-rows"></div>

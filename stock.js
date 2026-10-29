@@ -7,7 +7,7 @@ import { $, esc, debounce, fmtDateTime } from "./shared/util.js";
 import { S, itemName, findLib, normSku } from "./state.js";
 import { balanceCode, codeLabel, cleanScan, isPicklineRow, SEG_LABELS } from "./loc.js";
 import { onHand } from "./data.js";
-import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
+import { fmtNum, fmtGallons, gallonsFor, unitLabel, ci } from "./units.js";
 import { scanOnce } from "./scanner.js";
 import { openReceive, openMove, openStage } from "./dialogs.js";
 import { openAddToLibrary } from "./library.js";
@@ -94,6 +94,18 @@ export function renderStock() {
   renderRows();
 }
 
+/** Title + detail lines for the Item column. Generic names ("Other") lead with make / model instead. */
+function itemCell(r, lib) {
+  const name = itemName(r);
+  const pick = (f) => String(r[f] || (lib && ci(lib, f)) || "").trim();
+  const make = pick("make"), model = pick("model"), desc = pick("description");
+  const generic = /^(other|misc|miscellaneous|unknown|\(unknown\))$/i.test(name);
+  const mm = [make, model].filter(Boolean).join(" · ");
+  const title = generic && mm ? mm : name;
+  const details = [generic && mm ? "" : mm, desc.length > 90 ? desc.slice(0, 87) + "…" : desc].filter(Boolean).join(" · ");
+  return `<span class="t">${esc(title)}</span>${generic && mm ? ` <span class="tag">${esc(name)}</span>` : ""}<div class="sub">${esc(r.item_sku || "")}</div>${details ? `<div class="sub">${esc(details)}</div>` : ""}`;
+}
+
 function renderRows() {
   const host = $("#sk-table");
   if (!host) return;
@@ -112,18 +124,18 @@ function renderRows() {
         const labels = r.zone ? SEG_LABELS : SEG_LABELS.slice(1);
         const segVals = r.zone ? segs : segs.slice(1);
         return `<tr>
-          <td><span class="t">${esc(itemName(r))}</span><div class="sub">${esc(r.item_sku || "")}</div></td>
+          <td>${itemCell(r, lib)}</td>
           <td><span class="mono">${esc(codeLabel(code))}</span>${pl ? ` <span class="tag">Pick line</span>` : ""}
             <div class="sub">${labels.map((l, i) => `${l} ${esc(segVals[i] ?? "")}`).join(" · ")}</div></td>
-          <td>${esc(r.lot_number || "")}</td>
+          <td class="col-lot">${esc(r.lot_number || "")}</td>
           ${showOwner() ? `<td>${r.property_owner ? `<span class="owner-tag">${esc(ownerName(r.property_owner))}</span>` : `<span class="sub">—</span>`}</td>` : ""}
-          <td class="num ${q <= CONFIG.LOW_STOCK ? "stock-low" : ""}">${fmtNum(q)}<div class="sub">${esc(unitLabel(lib, r.unit_of_measure))}</div>${g > 0 ? `<div class="sub">≈ ${fmtGallons(g)} gal</div>` : ""}</td>
+          <td class="num oh ${q <= CONFIG.LOW_STOCK ? "stock-low" : ""}"><span class="oh-q">${fmtNum(q)}</span><div class="sub">${esc(unitLabel(lib, r.unit_of_measure))}</div>${g > 0 ? `<div class="sub">≈ ${fmtGallons(g)} gal</div>` : ""}</td>
           <td class="sub">${esc(fmtDateTime(r.last_update))}</td>
           <td class="row-actions">${edit && S.isAdmin && ownersActive() ? `<button type="button" data-act="rowowner" data-oid="${esc(r._oid)}">Owner</button>` : ""}${edit && mine ? `<button type="button" data-act="rowmove" data-code="${esc(code)}" data-sku="${esc(normSku(r.item_sku))}" data-lot="${esc(r.lot_number || "")}">Move</button>${pl ? "" : `<button type="button" data-act="rowstage" data-sku="${esc(normSku(r.item_sku))}">To pick line</button>`}` : ""}</td>
         </tr>`;
       }).join("")
     : `<tr><td colspan="${showOwner() ? 7 : 6}" class="empty">${S.balances.length ? "Nothing matches that search." : "No stock recorded yet."}</td></tr>`;
-  host.innerHTML = `<div class="table-wrap tall"><table class="grid"><thead><tr><th>Item</th><th>Location</th><th>Lot</th>${showOwner() ? "<th>Owner</th>" : ""}<th class="num">On hand</th><th>Updated</th><th></th></tr></thead><tbody>${body}</tbody></table></div>
+  host.innerHTML = `<div class="table-wrap tall"><table class="grid"><thead><tr><th>Item</th><th>Location</th><th class="col-lot">Lot</th>${showOwner() ? "<th>Owner</th>" : ""}<th class="num oh-h">On hand</th><th>Updated</th><th></th></tr></thead><tbody>${body}</tbody></table></div>
     <div class="sub" style="margin:.5rem 0">${fmtNum(rows.length)} line(s)${shown.length < rows.length ? ` · showing ${fmtNum(shown.length)} <button type="button" class="link-btn" data-act="more">Show more</button>` : ""}</div>`;
 }
 
