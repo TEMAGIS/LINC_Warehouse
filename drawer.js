@@ -5,6 +5,7 @@
 // ---------------------------------------------------------------------------
 import { CONFIG } from "./config.js";
 import { $, esc, fmtDateTime } from "./shared/util.js";
+import { toast } from "./shared/ui.js";
 import { S, itemParts, itemName, findLib, normSku } from "./state.js";
 import { balanceCode, codeLabel, isPicklineRow } from "./loc.js";
 import { onHand } from "./data.js";
@@ -57,6 +58,8 @@ function render() {
   const unit = unitLabel(lib, base.unit_of_measure);
   const gal = gallonsFor(lib, total);
   const edit = S.canEdit;
+  const movable = rows.filter((r) => canActOn(r.property_owner));
+  const canMove = edit && movable.length > 0;
 
   // Total for everything with the same item name (all brands, sizes and barcodes): "Total Water", "Total Cat Treats".
   let grp = null;
@@ -116,7 +119,7 @@ function render() {
         </div>
         ${grp ? `<details class="dr-group"><summary><b>Total ${esc(grp.name)}</b> <span class="dr-gnum">${fmtNum(grp.qty)}</span> <span class="sub">across ${grp.list.length} item${grp.list.length === 1 ? "" : "s"} · ${fmtNum(grp.staged)} on the pick line${grp.gal > 0 ? ` · ≈ ${fmtGallons(grp.gal)} gal` : ""}</span></summary>
           <ul class="dr-glist">${grp.list.map((e) => { const ip = itemParts(e.row, findLib(e.sku)); return `<li><span><b>${esc(ip.mm || ip.title)}</b> <span class="sub">${esc(e.sku)}</span></span><span>${fmtNum(e.qty)}${e.sku === sku ? ` <span class="tag">this item</span>` : ` <button type="button" data-d="open-sku" data-sku="${esc(e.sku)}">View</button>`}</span></li>`; }).join("")}</ul></details>` : ""}
-        ${edit ? `<div class="drawer-actions"><button type="button" class="btn-primary" data-d="receive">Receive more</button>${staged < total ? `<button type="button" data-d="stage">Stage to pick line</button>` : ""}</div>` : ""}
+        ${edit ? `<div class="drawer-actions"><button type="button" class="btn-primary" data-d="receive">Receive more</button>${canMove ? `<button type="button" data-d="move-item">Move</button>` : ""}${staged < total ? `<button type="button" data-d="stage">Stage to pick line</button>` : ""}</div>` : ""}
         <div class="dr-tabs" role="tablist">
           ${[["where", "Locations", rows.length], ["info", "Details", 0], ["hist", "History", hist.length]].map(([k, l, n]) => `<button type="button" role="tab" class="dr-tab${tab === k ? " active" : ""}" aria-selected="${tab === k}" data-d="tab" data-tab="${k}">${l}${n ? ` <span class="dr-count">${n}</span>` : ""}</button>`).join("")}
         </div>
@@ -156,6 +159,13 @@ function act(e) {
   if (d === "open-sku") return openDrawer(b.dataset.sku);
   if (d === "tab") { cur.tab = b.dataset.tab; return render(); }
   if (d === "receive") return openReceive({ sku });
+  if (d === "move-item") {
+    // one place to move from: open the Move dialog ready to go; several: pick the shelf on the Locations tab
+    const rowsHere = rowsFor(sku).filter((r) => canActOn(r.property_owner));
+    if (rowsHere.length === 1) { const r = rowsHere[0]; return openMove({ from: balanceCode(r), sku, lot: r.lot_number || "" }); }
+    cur.tab = "where"; render();
+    return toast("Choose the shelf to move from with the Move button beside it.", "info");
+  }
   if (d === "move") return openMove({ from: b.dataset.code, sku, lot: b.dataset.lot });
   if (d === "stage") return openStage({ sku });
   if (d === "owner") return openSetOwner(S.balances.find((r) => String(r._oid) === b.dataset.oid));
