@@ -98,3 +98,15 @@
 /* Add person search: highlighted top match, disabled "already on the list" rows */
 .ip-opt.ip-first { border-color: var(--navy, #002868); }
 .ip-opt[disabled] { opacity: 0.55; cursor: default; }
+
+/* Shipment plan page (full page, same look as the TEMAzon request form) */
+.plan-page { padding-bottom: 2rem; }
+.plan-bar { display: flex; align-items: center; gap: 1rem; padding: 0.9rem 1.5rem 0; max-width: 1800px; margin: 0 auto; }
+.plan-bar h1 { margin: 0; font-size: 1.3rem; }
+.plan-error { margin: 0.6rem 1.5rem 0; }
+.plan-foot { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; position: sticky; bottom: 0; background: var(--card); padding: 0.7rem 0 0.2rem; border-top: 1px solid var(--border); }
+.plan-page.busy { opacity: 0.7; pointer-events: none; }
+.req-layout.pl-one { grid-template-columns: minmax(0, 1fr); max-width: 900px; }
+.plan-page .pl-avail { max-height: none; overflow: visible; padding: 0; }
+.plan-page .cart fieldset { margin-top: 0.8rem; }
+.plan-page .cart .two-col { grid-template-columns: 1fr 1fr; }

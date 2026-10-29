@@ -45,7 +45,49 @@ export function initPickline() {
   S.render.pick = renderPickline;
 }
 
+/** Shows the plan editor as a full page inside the Pick line tab (like the TEMAzon request form), not a dialog. */
+function mountPlanPage({ title, body, buttons = [] }) {
+  const host = $("#screen-pick");
+  host.innerHTML = `<div class="plan-page">
+    <div class="plan-bar"><button type="button" data-back>&larr; All shipment plans</button><h1>${esc(title)}</h1></div>
+    <div class="modal-error plan-error" role="alert" hidden></div>
+    ${body}</div>`;
+  const el = host.querySelector(".plan-page");
+  const foot = el.querySelector(".plan-foot");
+  const err = el.querySelector(".plan-error");
+  const api = {
+    el,
+    close() { S.planPage = null; renderPickline(); window.scrollTo(0, 0); },
+    setError(msg) { err.hidden = !msg; err.textContent = msg || ""; if (msg) err.scrollIntoView({ block: "nearest" }); },
+    setBusy(busy) { el.querySelectorAll(".plan-foot button").forEach((b) => (b.disabled = busy)); el.classList.toggle("busy", busy); },
+  };
+  S.planPage = api;
+  el.querySelector("[data-back]").addEventListener("click", () => api.close());
+  buttons.forEach((b) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = b.label === "Close" ? "Back to plans" : b.label;
+    if (b.kind) btn.className = `btn-${b.kind}`;
+    btn.addEventListener("click", async () => {
+      api.setError("");
+      try {
+        api.setBusy(true);
+        const result = b.action ? await b.action(api) : undefined;
+        api.setBusy(false);
+        if (b.close !== false && result !== false) api.close();
+      } catch (e) {
+        api.setBusy(false);
+        api.setError(e && e.message ? e.message : String(e));
+      }
+    });
+    foot.appendChild(btn);
+  });
+  window.scrollTo(0, 0);
+  return api;
+}
+
 export function renderPickline() {
+  if (S.planPage) return; // a plan is being edited on this tab; don't redraw over it
   const el = $("#screen-pick");
   const rows = picklineRows();
   const heads = S.shipments.headers;
@@ -163,22 +205,24 @@ export function openPlan(header) {
   const reqDate = existing && existing.requested_date ? new Date(Number(existing.requested_date)).toISOString().slice(0, 10) : "";
 
   const body = `
-    <div class="req-facts cols"><dt>Plan</dt><dd class="mono">${esc(id)}</dd><dt>Status</dt><dd><span class="status-pill ${statusClass(existing ? existing.status : "Draft")}">${esc(existing ? existing.status : "New")}</span></dd></div>
-    <div class="pl-two${canEdit ? "" : " pl-one"}">
-      ${canEdit ? `<section class="pl-cat" aria-label="Pick line">
-        <h3>Pick line</h3>
-        <input type="search" id="pl-find" placeholder="Search items on the pick line" autocomplete="off" aria-label="Search the pick line" />
+    <div class="req-layout${canEdit ? "" : " pl-one"}">
+      ${canEdit ? `<section class="catalog" aria-label="Pick line">
+        <div class="catalog-tools">
+          <input id="pl-find" type="search" placeholder="Search the pick line: item, make, model, barcode, lot…" autocomplete="off" aria-label="Search the pick line" />
+        </div>
         <div id="pl-avail" class="catalog-list pl-avail" aria-live="polite"></div>
       </section>` : ""}
-      <section class="pl-cart" aria-label="This plan">
-        <h3>In this plan</h3>
+      <aside class="cart" aria-label="This shipment plan">
+        <h2>Your shipment plan</h2>
+        <div class="req-facts cols"><dt>Plan</dt><dd class="mono">${esc(id)}</dd><dt>Status</dt><dd><span class="status-pill ${statusClass(existing ? existing.status : "Draft")}">${esc(existing ? existing.status : "New")}</span></dd></div>
         <div id="pl-lines"></div>
-    <fieldset><legend>Who and where</legend>
+        <fieldset><legend>Who and where</legend>
       <div class="two-col">${HEADER_FIELDS.map(([k, l, req]) => `<label>${esc(l)}${req ? " *" : ""}<input data-h="${k}" value="${esc(val(k) || (k === "ship_to_state" && !existing ? "TN" : ""))}" ${dis} /></label>`).join("")}
         <label>Requested ship date<input data-h="requested_date" type="date" value="${esc(reqDate)}" ${dis} /></label></div>
       <label>Notes<textarea data-h="notes" rows="2" ${dis}>${esc(val("notes"))}</textarea></label>
     </fieldset>
-      </section>
+        <div class="plan-foot"></div>
+      </aside>
     </div>`;
 
   const buttons = [{ label: "Close" }];
@@ -189,7 +233,7 @@ export function openPlan(header) {
     buttons.push({ label: "Mark ready", action: () => save(PLAN_STATUS.READY) });
     buttons.push({ label: "Ship now", kind: "primary", action: () => shipNow() });
   }
-  const m = openModal({ title: readOnly ? `Shipment ${id}` : existing ? `Shipment plan ${id}` : "New shipment plan", body, wide: true, buttons });
+  const m = mountPlanPage({ title: readOnly ? `Shipment ${id}` : existing ? `Shipment plan ${id}` : "New shipment plan", body, buttons });
   const root = m.el;
   const q = (s) => root.querySelector(s);
 
