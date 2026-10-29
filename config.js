@@ -68,8 +68,6 @@ export const CONFIG = {
   SHIPMENTS_ITEM_ID: "",
   SHIPMENTS_SERVICE_URL: "",
 
-  // Link to the read-only location lookup page (optional)
-  LOOKUP_URL: "https://temagis.github.io/LINC_Display/",
 
   // --- Behaviour ---
   LOW_STOCK: 5,

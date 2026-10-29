@@ -63,14 +63,21 @@ export async function queryAll(layerUrl, opts = {}) {
   const rows = [];
   let offset = 0;
   for (;;) {
-    const data = await esriRequest(`${layerUrl}/query`, {
-      where,
-      outFields,
-      orderByFields,
-      returnGeometry: returnGeometry ? "true" : "false",
-      resultOffset: String(offset),
-      resultRecordCount: String(pageSize),
-    });
+    let data;
+    try {
+      data = await esriRequest(`${layerUrl}/query`, {
+        where,
+        outFields,
+        orderByFields,
+        returnGeometry: returnGeometry ? "true" : "false",
+        resultOffset: String(offset),
+        resultRecordCount: String(pageSize),
+      });
+    } catch (err) {
+      // Some layers/views refuse paging or ordering ("This operation is not supported"): retry as a plain query.
+      if (offset !== 0 || !/not supported/i.test(err.message)) throw err;
+      data = await esriRequest(`${layerUrl}/query`, { where, outFields, returnGeometry: returnGeometry ? "true" : "false" });
+    }
     const feats = data.features || [];
     const oid = data.objectIdFieldName || oidField;
     for (const f of feats) rows.push({ ...f.attributes, _oid: f.attributes[oid], ...(f.geometry ? { _geom: f.geometry } : {}) });

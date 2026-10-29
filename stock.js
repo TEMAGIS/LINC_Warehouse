@@ -85,7 +85,6 @@ export function renderStock() {
         .map(([k, l]) => `<button type="button" class="pill ${F.scope === k ? "active" : ""}" data-act="scope" data-s="${k}">${l}</button>`).join("")}</div>
       <span class="spacer"></span>
       ${showOwner() ? `<select id="sk-owner" aria-label="Property owner"><option value="">All owners</option><option value="__none" ${F.owner === "__none" ? "selected" : ""}>No owner</option>${ownerCodesInUse().map((o) => `<option value="${esc(o.code)}" ${sameOwner(F.owner, o.code) && F.owner ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select>` : ""}
-      ${CONFIG.LOOKUP_URL ? `<a href="${esc(CONFIG.LOOKUP_URL)}" target="_blank" rel="noopener">Location lookup</a>` : ""}
       ${edit ? `<button type="button" data-act="addlib">Add to library</button>
         <button type="button" data-act="move">Move</button>
         <button type="button" data-act="stage">Stage to pick line</button>

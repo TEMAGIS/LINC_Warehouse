@@ -73,10 +73,17 @@ export async function loadBalances() {
 
 export async function loadTransactions() {
   const oid = S.info.txn ? S.info.txn.objectIdField : "OBJECTID";
-  const data = await esriRequest(`${S.urls.txn}/query`, {
-    where: "1=1", outFields: "*", returnGeometry: "false",
-    orderByFields: "transaction_datetime DESC", resultRecordCount: String(CONFIG.TXN_FETCH_LIMIT),
-  });
+  let data;
+  try {
+    data = await esriRequest(`${S.urls.txn}/query`, {
+      where: "1=1", outFields: "*", returnGeometry: "false",
+      orderByFields: "transaction_datetime DESC", resultRecordCount: String(CONFIG.TXN_FETCH_LIMIT),
+    });
+  } catch (err) {
+    if (!/not supported/i.test(err.message)) throw err;
+    data = await esriRequest(`${S.urls.txn}/query`, { where: "1=1", outFields: "*", returnGeometry: "false" });
+    data.features = (data.features || []).sort((a, b) => (b.attributes.transaction_datetime || 0) - (a.attributes.transaction_datetime || 0)).slice(0, CONFIG.TXN_FETCH_LIMIT);
+  }
   const oidName = data.objectIdFieldName || oid;
   S.txns = (data.features || []).map((f) => ({ ...f.attributes, _oid: f.attributes[oidName] }));
 }
@@ -88,9 +95,13 @@ export async function loadLibrary() {
 
 export async function loadAllData(onStatus = () => {}) {
   onStatus("Loading inventory…");
-  await Promise.all([loadBalances(), loadLibrary()]);
+  const step = (label, key, fn) => fn().catch((e) => {
+    const which = S.usingView[key] ? " (view-only copy)" : "";
+    e.message = `${label}${which}: ${e.message}`; throw e;
+  });
+  await Promise.all([step("Inventory Balance", "bal", loadBalances), step("Barcode Library", "lib", loadLibrary)]);
   onStatus("Loading transactions…");
-  await loadTransactions();
+  await step("Transactions", "txn", loadTransactions);
 }
 
 /** Is this signed-in account an Inventory Administrator? Never throws (false when unsure). */
