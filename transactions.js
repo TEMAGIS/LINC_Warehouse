@@ -14,7 +14,7 @@ import { retryTransaction, voidTransaction } from "./txn.js";
 import { loadBalances, loadTransactions } from "./data.js";
 import { ownerName } from "./owners.js";
 
-const F = { q: "", type: "", status: "", from: "", to: "", page: 1, remote: null };
+const F = { q: "", type: "", status: "", from: "", to: "", page: 1, remote: null, view: "log", open: new Set() };
 
 const side = (t, p) => {
   const code = t[`${p}location_scan`];
@@ -59,7 +59,12 @@ export function initTransactions() {
   });
   el.addEventListener("click", async (e) => {
     const b = e.target.closest("[data-act]");
-    if (!b) return;
+    if (!b) {
+      const g = e.target.closest("tr[data-grp]");
+      if (g) { const k = g.dataset.grp; F.open.has(k) ? F.open.delete(k) : F.open.add(k); renderRows(); }
+      return;
+    }
+    if (b.dataset.act === "view") { F.view = b.dataset.v; F.page = 1; renderTxns(); return; }
     if (b.dataset.act === "more") { F.page += 1; renderRows(); }
     else if (b.dataset.act === "range") { setPreset(b.dataset.r); }
     else if (b.dataset.act === "csv-totals") exportTotals();
@@ -104,7 +109,9 @@ export function renderTxns() {
       <select id="tx-status" aria-label="Status"><option value="">All statuses</option>${["Success", "Pending", "Error", "Voided"].map((t) => `<option ${F.status === t ? "selected" : ""}>${t}</option>`).join("")}</select>
       ${pending ? `<span class="tag tag-restricted">${pending} not applied</span>` : ""}
       <span class="spacer"></span>
-      <button type="button" data-act="csv">Export CSV</button>
+      <div class="tb-group"><span class="tb-label">View as</span><div class="seg" role="group" aria-label="View as">${[["log", "Transactions"], ["totals", "Totals by item"]]
+        .map(([k, l]) => `<button type="button" class="seg-btn ${F.view === k ? "active" : ""}" aria-pressed="${F.view === k}" data-act="view" data-v="${k}">${l}</button>`).join("")}</div></div>
+      ${F.view === "log" ? `<button type="button" data-act="csv">Export CSV</button>` : ""}
     </div>
     <div class="toolbar tx-dates">
       <label class="inline">From <input type="date" id="tx-from" value="${esc(F.from)}" /></label>
@@ -174,28 +181,36 @@ export function totalsOf(rows, { status = "" } = {}) {
     const lib = findLib(t.item_sku);
     const ip = itemParts(t, lib);
     const key = ip.generic ? `${ip.name.toLowerCase()}|${String(t.item_sku || "").trim()}` : ip.name.toLowerCase();
-    const g = items.get(key) || { title: ip.generic ? ip.mm : ip.name, tag: ip.generic ? ip.name : "", recv: 0, ship: 0, moved: 0, gal: 0, ids: new Set() };
-    if (type === "Ship") { g.ship += q; g.gal += gallonsFor(lib, q); shipUnits += q; if (t.shipment_id) { shipIds.add(t.shipment_id); g.ids.add(t.shipment_id); } else looseShips += 1; }
-    else if (type === "Receive") { g.recv += q; recvUnits += q; }
-    else if (type === "Move") { g.moved += q; moves += 1; }
+    const g = items.get(key) || { key, title: ip.generic ? ip.mm : ip.name, tag: ip.generic ? ip.name : "", recv: 0, ship: 0, moved: 0, gal: 0, ids: new Set(), skus: new Map() };
+    const sk = String(t.item_sku || "").trim();
+    const e = g.skus.get(sk) || { sku: sk, title: ip.mm || ip.title, recv: 0, ship: 0, moved: 0 };
+    if (type === "Ship") { g.ship += q; e.ship += q; g.gal += gallonsFor(lib, q); shipUnits += q; if (t.shipment_id) { shipIds.add(t.shipment_id); g.ids.add(t.shipment_id); } else looseShips += 1; }
+    else if (type === "Receive") { g.recv += q; e.recv += q; recvUnits += q; }
+    else if (type === "Move") { g.moved += q; e.moved += q; moves += 1; }
+    g.skus.set(sk, e);
     items.set(key, g);
   }
   const list = [...items.values()].sort((a, b) => b.ship - a.ship || b.recv - a.recv || a.title.localeCompare(b.title));
   return { counted: counted.length, skipped: rows.length - counted.length, shipments: shipIds.size, looseShips, shipUnits, recvUnits, moves, list };
 }
 
-function summaryHtml(rows) {
+function totalsView(rows) {
   const t = totalsOf(rows, F);
   const range = F.from || F.to ? `${F.from || "the beginning"} to ${F.to || "today"}` : "all loaded dates";
   const tile = (n, l, cls = "") => `<div class="tile ${cls}"><div class="tile-n">${fmtNum(n)}</div><div class="tile-l">${l}</div></div>`;
-  const body = t.list.length ? t.list.map((g) => `<tr><td><span class="t">${esc(g.title)}</span>${g.tag ? ` <span class="tag">${esc(g.tag)}</span>` : ""}</td>
-      <td class="num">${fmtNum(g.recv)}</td><td class="num">${fmtNum(g.ship)}${g.gal > 0 ? `<div class="sub">≈ ${fmtGallons(g.gal)} gal</div>` : ""}</td><td class="num">${fmtNum(g.ids.size)}</td><td class="num">${fmtNum(g.moved)}</td></tr>`).join("")
-    : `<tr><td colspan="5" class="empty">Nothing to total.</td></tr>`;
-  return `<details class="tx-totals" ${F.sumClosed ? "" : "open"}><summary><b>Totals</b> <span class="sub">for ${esc(range)}${F.type ? ` · ${esc(F.type)}` : ""}${F.q ? ` · “${esc(F.q)}”` : ""}</span></summary>
+  const body = t.list.length ? t.list.map((g) => {
+    const many = g.skus.size > 1, open = F.open.has(g.key);
+    const head = `<tr class="row-click" ${many ? `data-grp="${esc(g.key)}"` : ""}><td>${many ? `<span class="caret">${open ? "▾" : "▸"}</span> ` : ""}<span class="t">${esc(g.title)}</span>${g.tag ? ` <span class="tag">${esc(g.tag)}</span>` : ""}<div class="sub">${g.skus.size} item${g.skus.size === 1 ? "" : "s"}</div></td>
+      <td class="num">${fmtNum(g.recv)}</td><td class="num">${fmtNum(g.ship)}${g.gal > 0 ? `<div class="sub">≈ ${fmtGallons(g.gal)} gal</div>` : ""}</td><td class="num">${fmtNum(g.ids.size)}</td><td class="num">${fmtNum(g.moved)}</td></tr>`;
+    const subs = many && open ? [...g.skus.values()].sort((a, b) => b.ship - a.ship || b.recv - a.recv).map((e) => `<tr class="sub-row"><td class="indent"><span class="t">${esc(e.title)}</span><div class="sub">${esc(e.sku)}</div></td><td class="num">${fmtNum(e.recv)}</td><td class="num">${fmtNum(e.ship)}</td><td class="num"></td><td class="num">${fmtNum(e.moved)}</td></tr>`).join("") : "";
+    return head + subs;
+  }).join("") : `<tr><td colspan="5" class="empty">Nothing to total.</td></tr>`;
+  return `<div class="sub" style="margin:.2rem 0 .6rem">Totals for <b>${esc(range)}</b>${F.type ? ` · ${esc(F.type)}` : ""}${F.q ? ` · “${esc(F.q)}”` : ""}</div>
     <div class="tiles">${tile(t.shipments, "Shipments", "tile-info")}${tile(t.shipUnits, "Units shipped")}${tile(t.recvUnits, "Units received")}${tile(t.moves, "Moves")}${tile(t.counted, "Transactions counted")}</div>
-    <div class="table-wrap"><table class="grid"><thead><tr><th>Item</th><th class="num">Received</th><th class="num">Shipped</th><th class="num">Shipments</th><th class="num">Moved</th></tr></thead><tbody>${body}</tbody></table></div>
-    <div class="sub" style="margin:.4rem 0">Counts applied (Success) transactions${t.skipped ? `; ${fmtNum(t.skipped)} not applied, voided or in error are left out` : ""}. Units are added as plain counts, so a case and a single bottle each count as 1.${t.looseShips ? ` ${fmtNum(t.looseShips)} shipped line(s) have no shipment number, so they aren't in the Shipments count.` : ""}
-      <button type="button" class="link-btn" data-act="csv-totals">Download totals CSV</button></div></details>`;
+    <div class="table-wrap tall"><table class="grid"><thead><tr><th>Item</th><th class="num">Received</th><th class="num">Shipped</th><th class="num">Shipments</th><th class="num">Moved</th></tr></thead><tbody>${body}</tbody>
+      <tfoot><tr><td><b>Total</b></td><td class="num"><b>${fmtNum(t.recvUnits)}</b></td><td class="num"><b>${fmtNum(t.shipUnits)}</b></td><td class="num"><b>${fmtNum(t.shipments)}</b></td><td class="num"><b>${fmtNum(t.list.reduce((n, g) => n + g.moved, 0))}</b></td></tr></tfoot></table></div>
+    <div class="sub" style="margin:.4rem 0">${fmtNum(t.list.length)} item name${t.list.length === 1 ? "" : "s"}. Click a name with a ▸ to see its barcodes. Counts applied (Success) transactions${t.skipped ? `; ${fmtNum(t.skipped)} not applied, voided or in error are left out` : ""}. Units are added as plain counts, so a case and a single bottle each count as 1.${t.looseShips ? ` ${fmtNum(t.looseShips)} shipped line(s) have no shipment number, so they aren't in the Shipments count.` : ""}
+      <button type="button" class="link-btn" data-act="csv-totals">Download totals CSV</button></div>`;
 }
 
 function exportTotals() {
@@ -210,7 +225,8 @@ function renderRows() {
   const sum = $("#tx-summary");
   if (F.remote && F.remote.loading && !F.remote.rows) { if (sum) sum.innerHTML = `<div class="sub" style="margin:.4rem 0">Loading that date range…</div>`; host.innerHTML = ""; return; }
   const rows = filterTxns(sourceRows(), F);
-  if (sum) { sum.innerHTML = summaryHtml(rows); const d = sum.querySelector("details"); if (d) d.addEventListener("toggle", () => { F.sumClosed = !d.open; }); }
+  if (sum) sum.innerHTML = "";
+  if (F.view === "totals") { host.innerHTML = totalsView(rows); return; }
   const shown = rows.slice(0, F.page * CONFIG.ROWS_PER_PAGE);
   const body = shown.length
     ? shown.map((t) => {
