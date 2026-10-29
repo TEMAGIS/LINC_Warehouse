@@ -139,3 +139,13 @@
 /* Item picker rows: title, then barcode / stock, then make-model or description on its own line */
 .ip-opt.ip-rich { display: block; text-align: left; }
 .ip-opt .ip-extra { display: block; margin-top: 0.1rem; }
+
+/* Item panel: summary numbers on top, tabs for Locations / Shipping / Details / History */
+.dr-stats { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 0.5rem; margin-bottom: 0.8rem; }
+.dr-stat { border: 1px solid var(--border); border-radius: var(--radius, 8px); padding: 0.55rem 0.7rem; display: flex; flex-direction: column; gap: 0.1rem; background: var(--card, #fff); }
+.dr-stat.main { background: #f2f6fd; }
+.dr-num.sm { font-size: 1.3rem; }
+.dr-tabs { display: flex; gap: 0.2rem; border-bottom: 1px solid var(--border); margin: 0.2rem 0 0.8rem; flex-wrap: wrap; }
+.dr-tab { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; padding: 0.45rem 0.7rem; font-weight: 600; color: var(--muted); cursor: pointer; }
+.dr-tab.active { color: var(--navy, #002868); border-bottom-color: var(--navy, #002868); }
+.dr-count { display: inline-block; min-width: 1.2rem; text-align: center; font-size: 0.72rem; background: #eef1f4; border-radius: 999px; padding: 0 0.35rem; margin-left: 0.2rem; color: var(--muted); }

@@ -20,7 +20,7 @@ let cur = null; // { sku }
 export const isDrawerOpen = () => !!cur;
 
 export function openDrawer(sku) {
-  cur = { sku: normSku(sku) };
+  cur = { sku: normSku(sku), tab: "where" };
   render();
 }
 
@@ -48,6 +48,7 @@ function render() {
   const host = $("#drawer-host");
   if (!host) return;
   const sku = cur.sku;
+  const tab = cur.tab || "where";
   const rows = rowsFor(sku).sort((a, b) => Number(isPicklineRow(a)) - Number(isPicklineRow(b)) || balanceCode(a).localeCompare(balanceCode(b), undefined, { numeric: true }));
   const lib = findLib(sku);
   const base = rows[0] || S.balances.find((r) => normSku(r.item_sku) === sku) || { item_sku: sku };
@@ -97,7 +98,19 @@ function render() {
         ${statusPill(total)}<button type="button" class="icon-btn" data-d="close" aria-label="Close">&times;</button>
       </header>
       <div class="body">
+        <div class="dr-stats">
+          <div class="dr-stat main"><span class="dr-num">${fmtNum(total)}</span><span class="sub">${esc(unit)} on hand${gal > 0 ? ` · ≈ ${fmtGallons(gal)} gal` : ""}</span></div>
+          <div class="dr-stat"><span class="dr-num sm">${fmtNum(staged)}</span><span class="sub">on the pick line</span></div>
+          <div class="dr-stat"><span class="dr-num sm">${fmtNum(promised)}</span><span class="sub">promised to plans</span></div>
+        </div>
         ${edit ? `<div class="drawer-actions"><button type="button" class="btn-primary" data-d="receive">Receive more</button>${staged < total ? `<button type="button" data-d="stage">Stage to pick line</button>` : ""}</div>` : ""}
+        <div class="dr-tabs" role="tablist">
+          ${[["where", "Locations", rows.length], ["ship", "Shipping", inPlans.length], ["info", "Details", 0], ["hist", "History", hist.length]].map(([k, l, n]) => `<button type="button" role="tab" class="dr-tab${tab === k ? " active" : ""}" aria-selected="${tab === k}" data-d="tab" data-tab="${k}">${l}${n ? ` <span class="dr-count">${n}</span>` : ""}</button>`).join("")}
+        </div>
+        ${tab === "where" ? `<div class="card">
+          <table class="mini-table"><thead><tr><th>Where</th><th class="num">Qty</th><th></th></tr></thead><tbody>${onHandRows}</tbody></table>
+        </div>` : ""}
+        ${tab === "ship" ? `
         <div class="card ship">
           <div class="sub" style="margin-bottom:.3rem">SHIPPING</div>
           <div>${fmtNum(staged)} on the pick line · ${fmtNum(promised)} promised to open plans</div>
@@ -106,7 +119,8 @@ function render() {
             <button type="button" class="btn-primary" data-d="plan-new">Add to a new shipment plan</button>
             ${plans.filter((x) => x.h.status === "Draft" || x.h.status === "Ready").slice(0, 4).map((x) => `<button type="button" data-d="plan-add" data-id="${esc(x.h.shipment_id)}">Add to ${esc(x.h.shipment_id)}</button>`).join("")}
           </div>` : ""}
-        </div>
+        </div>` : ""}
+        ${tab === "info" ? `
         <div class="card">
           <dl class="kv">
             ${detail("Category", ci(lib, "item_category") || base.category)}
@@ -117,13 +131,8 @@ function render() {
             ${detail("Size", ci(lib, "size"))}
           </dl>
           ${lib ? (edit && libCanUpdate() ? `<button type="button" class="btn-sm" data-d="edit" style="margin-top:.6rem">Edit details</button>` : "") : `<p class="sub">This barcode isn't in the Barcode Library yet.</p>`}
-        </div>
-        <div class="card">
-          <div class="dr-total"><span class="dr-num">${fmtNum(total)}</span> <span class="sub">${esc(unit)} on hand${gal > 0 ? ` · ≈ ${fmtGallons(gal)} gal` : ""}</span></div>
-          <table class="mini-table"><thead><tr><th>Where</th><th class="num">Qty</th><th></th></tr></thead><tbody>${onHandRows}</tbody></table>
-        </div>
-        <h3>History</h3>
-        ${histHtml}
+        </div>` : ""}
+        ${tab === "hist" ? histHtml : ""}
       </div>
     </aside>`;
 }
@@ -141,6 +150,7 @@ function act(e) {
   const d = b.dataset.d;
   const sku = cur.sku;
   if (d === "close") return closeDrawer();
+  if (d === "tab") { cur.tab = b.dataset.tab; return render(); }
   if (d === "receive") return openReceive({ sku });
   if (d === "move") return openMove({ from: b.dataset.code, sku, lot: b.dataset.lot });
   if (d === "stage") return openStage({ sku });
