@@ -22,7 +22,7 @@ export const CONFIG = {
   // --- ArcGIS Online item IDs of the data (same layers the field app and Lookup page use) ---
   ITEM_IDS: {
     transactions: "3481accef6df444c8174272cb0363500", // LINC_Transactions (the EDITABLE layer; the old 6dfb43b5… item is a view-only copy)
-    balance: "d9c39c68e79047c38263ec7014198bfb",      // LINC Inventory Balance (the EDITABLE layer; the old 812418a8… item is a view-only copy)
+    balance: "926007de266e40f691c12c7e1391437a",      // LINC Inventory Balance (the EDITABLE view layer; was d9c39c68… ; the old 812418a8… item is a view-only copy)
     library: "2d5dbbe0ec8e4f958aa20ed06ec505bc",      // Barcode Library (the EDITABLE layer; the old 426fb0b3… item is a view-only copy)
   },
 

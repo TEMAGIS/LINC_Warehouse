@@ -95,9 +95,25 @@ export async function loadLibrary() {
 
 export async function loadAllData(onStatus = () => {}) {
   onStatus("Loading inventory…");
-  const step = (label, key, fn) => fn().catch((e) => {
+  const viewIds = CONFIG.VIEW_ITEM_IDS || {};
+  const viewKey = { bal: "balance", txn: "transactions", lib: "library" };
+  // If the editable layer opens but refuses to be read for this account, read from the view-only copy instead.
+  const useView = async (key) => {
+    const vid = viewIds[viewKey[key]];
+    if (!vid || vid === S.itemUsed[key]) return false;
+    const url = await serviceLayerUrl(vid, key === "lib" ? { preferLayers: true } : {});
+    const info = await getLayerInfo(url);
+    S.usingView[key] = `the editable layer refused to be read (${S.urls[key]})`;
+    S.itemUsed[key] = vid; S.urls[key] = url; S.info[key] = info;
+    S.canEditBalance = false; S.layerCanEdit = false; S.canEdit = false;
+    return true;
+  };
+  const step = (label, key, fn) => fn().catch(async (e) => {
+    if (!S.usingView[key]) {
+      try { if (await useView(key)) return await fn(); } catch (e2) { e.message += ` (view-only copy: ${e2.message})`; }
+    }
     const which = S.usingView[key] ? " (view-only copy)" : "";
-    e.message = `${label}${which}: ${e.message}`; throw e;
+    e.message = `${label}${which}: ${e.message} [${S.urls[key]}]`; throw e;
   });
   await Promise.all([step("Inventory Balance", "bal", loadBalances), step("Barcode Library", "lib", loadLibrary)]);
   onStatus("Loading transactions…");
