@@ -4,10 +4,10 @@
 // ---------------------------------------------------------------------------
 import { CONFIG } from "./config.js";
 import { $, esc, debounce, fmtDateTime } from "./shared/util.js";
-import { S, itemName, findLib, normSku } from "./state.js";
+import { S, itemName, itemCell, findLib, normSku } from "./state.js";
 import { balanceCode, codeLabel, cleanScan, isPicklineRow, SEG_LABELS } from "./loc.js";
 import { onHand } from "./data.js";
-import { fmtNum, fmtGallons, gallonsFor, unitLabel, ci } from "./units.js";
+import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
 import { scanOnce } from "./scanner.js";
 import { openReceive, openMove, openStage } from "./dialogs.js";
 import { openAddToLibrary } from "./library.js";
@@ -94,17 +94,6 @@ export function renderStock() {
   renderRows();
 }
 
-/** Title + detail lines for the Item column. Generic names ("Other") lead with make / model instead. */
-function itemCell(r, lib) {
-  const name = itemName(r);
-  const pick = (f) => String(r[f] || (lib && ci(lib, f)) || "").trim();
-  const make = pick("make"), model = pick("model"), desc = pick("description");
-  const generic = /^(other|misc|miscellaneous|unknown|\(unknown\))$/i.test(name);
-  const mm = [make, model].filter(Boolean).join(" · ");
-  const title = generic && mm ? mm : name;
-  const details = [generic && mm ? "" : mm, desc.length > 90 ? desc.slice(0, 87) + "…" : desc].filter(Boolean).join(" · ");
-  return `<span class="t">${esc(title)}</span>${generic && mm ? ` <span class="tag">${esc(name)}</span>` : ""}<div class="sub">${esc(r.item_sku || "")}</div>${details ? `<div class="sub">${esc(details)}</div>` : ""}`;
-}
 
 function renderRows() {
   const host = $("#sk-table");

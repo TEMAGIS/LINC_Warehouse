@@ -1,5 +1,6 @@
 // Shared in-memory state for the whole app (one object, no framework).
 import { ci } from "./units.js";
+import { esc } from "./shared/util.js";
 
 export const S = {
   profile: null,
@@ -55,3 +56,15 @@ export const itemName = (r) => String(r.item || (findLib(r.item_sku) && ci(findL
 
 export const blank = (v) => v === null || v === undefined || String(v).trim() === "";
 export const sameLot = (a, b) => String(a ?? "").trim() === String(b ?? "").trim();
+
+/** Title + detail lines for the Item column. Generic names ("Other") lead with make / model instead. */
+export function itemCell(r, lib) {
+  const name = itemName(r);
+  const pick = (f) => String(r[f] || (lib && ci(lib, f)) || "").trim();
+  const make = pick("make"), model = pick("model"), desc = pick("description");
+  const generic = /^(other|misc|miscellaneous|unknown|\(unknown\))$/i.test(name);
+  const mm = [make, model].filter(Boolean).join(" · ");
+  const title = generic && mm ? mm : name;
+  const details = [generic && mm ? "" : mm, desc.length > 90 ? desc.slice(0, 87) + "…" : desc].filter(Boolean).join(" · ");
+  return `<span class="t">${esc(title)}</span>${generic && mm ? ` <span class="tag">${esc(name)}</span>` : ""}<div class="sub">${esc(r.item_sku || "")}</div>${details ? `<div class="sub">${esc(details)}</div>` : ""}`;
+}

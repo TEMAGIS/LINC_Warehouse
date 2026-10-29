@@ -6,7 +6,7 @@
 import { CONFIG } from "./config.js";
 import { openModal, confirmDialog, toast } from "./shared/ui.js";
 import { $, esc, fmtDate, fmtDateTime } from "./shared/util.js";
-import { S, itemName, findLib, normSku } from "./state.js";
+import { S, itemName, itemCell, findLib, normSku } from "./state.js";
 import { balanceCode, codeLabel, isPicklineRow, picklineLanes } from "./loc.js";
 import { onHand } from "./data.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
@@ -164,18 +164,22 @@ export function openPlan(header) {
 
   const body = `
     <div class="req-facts cols"><dt>Plan</dt><dd class="mono">${esc(id)}</dd><dt>Status</dt><dd><span class="status-pill ${statusClass(existing ? existing.status : "Draft")}">${esc(existing ? existing.status : "New")}</span></dd></div>
+    <div class="pl-two${canEdit ? "" : " pl-one"}">
+      ${canEdit ? `<section class="pl-cat" aria-label="Pick line">
+        <h3>Pick line</h3>
+        <input type="search" id="pl-find" placeholder="Search items on the pick line" autocomplete="off" aria-label="Search the pick line" />
+        <div id="pl-avail" class="catalog-list pl-avail" aria-live="polite"></div>
+      </section>` : ""}
+      <section class="pl-cart" aria-label="This plan">
+        <h3>In this plan</h3>
+        <div id="pl-lines"></div>
     <fieldset><legend>Who and where</legend>
       <div class="two-col">${HEADER_FIELDS.map(([k, l, req]) => `<label>${esc(l)}${req ? " *" : ""}<input data-h="${k}" value="${esc(val(k) || (k === "ship_to_state" && !existing ? "TN" : ""))}" ${dis} /></label>`).join("")}
         <label>Requested ship date<input data-h="requested_date" type="date" value="${esc(reqDate)}" ${dis} /></label></div>
       <label>Notes<textarea data-h="notes" rows="2" ${dis}>${esc(val("notes"))}</textarea></label>
     </fieldset>
-    <fieldset><legend>Items (from the pick line)</legend>
-      <div id="pl-lines"></div>
-      ${canEdit ? `<div style="display:flex;gap:.6rem;align-items:flex-end;margin-top:.5rem;flex-wrap:wrap">
-        <label style="margin:0;flex:1;min-width:14rem">Add from the pick line<select id="pl-add-sel"></select></label>
-        <label style="margin:0">Qty<input id="pl-add-qty" type="number" min="1" step="1" inputmode="numeric" data-qty style="width:6rem" /></label>
-        <button type="button" id="pl-add">Add</button></div>` : ""}
-    </fieldset>`;
+      </section>
+    </div>`;
 
   const buttons = [{ label: "Close" }];
   if (existing && canEdit) buttons.push({ label: "Cancel this plan", kind: "danger", action: () => cancelPlan() });
@@ -199,44 +203,105 @@ export function openPlan(header) {
     return h;
   };
 
-  const renderLines = () => {
+  // Pick-line stock this plan may draw on (other plans' promises already taken off), as cards.
+  const catRows = () => picklineRows().filter((r) => canActOn(r.property_owner)).map((r) => {
+    const code = balanceCode(r);
+    const base = onHand(r) - plannedQty(r.item_sku, code, r.lot_number, { exceptShipmentId: id, ...ownOpt(r) });
+    return { r, code, base, k: lineKey(r.item_sku, code, r.lot_number, r.property_owner) };
+  }).filter((x) => x.base > 0);
+  const openLine = (k) => lines.find((l) => l.status !== "Shipped" && lineKey(l.item_sku, l.from_location, l.lot, l.property_owner) === k);
+  let shown = [];
+
+  const setLineQty = (x, qty) => {
+    qty = Math.max(0, Math.floor(Number(qty) || 0));
+    if (qty > x.base) { toast(`Only ${fmtNum(x.base)} free of that line.`, "error"); qty = x.base; }
+    const ln = openLine(x.k);
+    if (qty <= 0) { if (ln) lines.splice(lines.indexOf(ln), 1); }
+    else if (ln) ln.quantity = qty;
+    else lines.push({ item_sku: normSku(x.r.item_sku), item_desc: itemName(x.r), unit: unitLabel(findLib(x.r.item_sku), x.r.unit_of_measure), quantity: qty, lot: x.r.lot_number || "", from_location: x.code, property_owner: ownersActive() ? String(x.r.property_owner || "") : "", status: "Planned" });
+    renderLines(); renderAvail();
+  };
+
+  const stepper = (qty, attr, max) => `<div class="stepper" role="group" aria-label="Quantity">
+      <button type="button" data-dec ${attr} aria-label="Decrease quantity">−</button>
+      <input type="number" min="1" ${max ? `max="${max}"` : ""} step="1" inputmode="numeric" value="${qty}" data-qty ${attr} aria-label="Quantity" />
+      <button type="button" data-inc ${attr} aria-label="Increase quantity">+</button></div>`;
+
+  const cardHtml = (x, i) => {
+    const ln = openLine(x.k);
+    const own = ownersActive() && x.r.property_owner ? ` · <span class="owner-tag">${esc(ownerName(x.r.property_owner))}</span>` : "";
+    const unit = unitLabel(findLib(x.r.item_sku), x.r.unit_of_measure);
+    return `<article class="item-card${ln ? " in-cart" : ""}" data-ck="${i}">
+      <div class="item-main">${ln ? `<span class="in-cart-badge" title="In this plan">✓ In plan</span>` : ""}${itemCell(x.r, findLib(x.r.item_sku))}
+        <div class="item-meta"><span class="mono">${esc(codeLabel(x.code))}</span>${x.r.lot_number ? " · lot " + esc(x.r.lot_number) : ""}${own}</div>
+        <div class="item-stock stock-ok">${fmtNum(x.base)} ${esc(unit)} free</div></div>
+      <div class="item-actions">${ln ? stepper(ln.quantity, `data-ck="${i}"`, x.base) : `<button type="button" class="btn-add" data-add data-ck="${i}">Add</button>`}</div>
+    </article>`;
+  };
+
+  function renderAvail() {
+    const host = q("#pl-avail");
+    if (!host) return;
+    const term = (q("#pl-find").value || "").trim().toLowerCase();
+    shown = catRows().filter((x) => {
+      if (!term) return true;
+      const lib = findLib(x.r.item_sku);
+      return `${itemName(x.r)} ${x.r.item_sku || ""} ${x.r.make || ""} ${x.r.model || ""} ${x.r.lot_number || ""} ${codeLabel(x.code)} ${ownerName(x.r.property_owner)} ${lib ? Object.values(lib).join(" ") : ""}`.toLowerCase().includes(term);
+    });
+    host.innerHTML = shown.length ? shown.map(cardHtml).join("")
+      : `<div class="empty">${term ? "Nothing on the pick line matches that." : "Nothing free on the pick line. Stage stock to it first."}</div>`;
+  }
+
+  function renderLines() {
     const host = q("#pl-lines");
     host.innerHTML = lines.length
-      ? `<table class="mini-table"><thead><tr><th>Item</th><th>From</th><th class="num">Qty</th><th>Status</th>${canEdit ? "<th></th>" : ""}</tr></thead><tbody>${lines
-          .map((l, i) => `<tr><td>${esc(l.item_desc || l.item_sku)}<div class="sub">${esc(l.item_sku || "")}${l.lot ? " · lot " + esc(l.lot) : ""}${l.property_owner ? ` · <span class="owner-tag">${esc(ownerName(l.property_owner))}</span>` : ""}</div></td>
-            <td class="mono">${esc(codeLabel(l.from_location))}</td><td class="num">${fmtNum(l.quantity)}${l.unit ? `<div class="sub">${esc(l.unit)}</div>` : ""}</td>
-            <td>${esc(l.status || "Planned")}${l.note ? `<div class="sub">${esc(l.note)}</div>` : ""}</td>
-            ${canEdit ? `<td><button type="button" class="icon-btn" data-rm="${i}" aria-label="Remove line">&times;</button></td>` : ""}</tr>`)
-          .join("")}</tbody></table>`
-      : `<div class="empty">No items yet.</div>`;
-    if (canEdit) {
-      const av = availableRows(lines, { exceptShipmentId: id });
-      q("#pl-add-sel").innerHTML = av.length
-        ? av.map((x, i) => `<option value="${i}">${esc(itemName(x.r))} — ${esc(codeLabel(x.code))}${x.r.lot_number ? " · lot " + esc(x.r.lot_number) : ""}${ownersActive() && x.r.property_owner ? " · " + esc(ownerName(x.r.property_owner)) : ""} (${fmtNum(x.free)} free)</option>`).join("")
-        : `<option value="">Nothing free on the pick line</option>`;
-      q("#pl-add-sel")._av = av;
-    }
-  };
+      ? lines.map((l, i) => {
+          const edit = canEdit && l.status !== "Shipped";
+          return `<div class="cart-line" data-li="${i}">
+            <div class="cart-line-main"><div class="cart-line-title">${esc(l.item_desc || l.item_sku)}</div>
+              <div class="cart-line-sub">${esc(l.item_sku || "")} · <span class="mono">${esc(codeLabel(l.from_location))}</span>${l.lot ? " · lot " + esc(l.lot) : ""}${l.property_owner ? ` · <span class="owner-tag">${esc(ownerName(l.property_owner))}</span>` : ""}${l.status && l.status !== "Planned" ? ` · ${esc(l.status)}` : ""}${l.note ? `<div>${esc(l.note)}</div>` : ""}</div></div>
+            ${edit ? stepper(l.quantity, `data-li="${i}"`) : `<div class="num">${fmtNum(l.quantity)}${l.unit ? ` <span class="sub">${esc(l.unit)}</span>` : ""}</div>`}
+            ${edit ? `<button type="button" class="icon-btn" data-rm="${i}" aria-label="Remove line">&times;</button>` : "<span></span>"}</div>`;
+        }).join("") + `<div class="cart-summary">${lines.length} line${lines.length === 1 ? "" : "s"} · ${fmtNum(lines.reduce((n, l) => n + Number(l.quantity || 0), 0))} units</div>`
+      : `<div class="empty">${canEdit ? "Nothing added yet. Use <b>Add</b> on any pick-line item." : "No items."}</div>`;
+  }
   renderLines();
   if (canEdit) {
-    q("#pl-add").addEventListener("click", () => {
-      const sel = q("#pl-add-sel");
-      const x = (sel._av || [])[Number(sel.value)];
-      const qty = Number(q("#pl-add-qty").value);
-      if (!x) return toast("Nothing free to add.", "error");
-      if (!(qty > 0) || Math.round(qty) !== qty) return toast("Enter a whole quantity.", "error");
-      if (qty > x.free) return toast(`Only ${x.free} free of that line.`, "error");
-      const same = lines.find((l) => lineKey(l.item_sku, l.from_location, l.lot, l.property_owner) === lineKey(x.r.item_sku, x.code, x.r.lot_number, x.r.property_owner) && l.status !== "Shipped");
-      if (same) same.quantity = Number(same.quantity) + qty;
-      else lines.push({ item_sku: normSku(x.r.item_sku), item_desc: itemName(x.r), unit: unitLabel(findLib(x.r.item_sku), x.r.unit_of_measure), quantity: qty, lot: x.r.lot_number || "", from_location: x.code, property_owner: ownersActive() ? String(x.r.property_owner || "") : "", status: "Planned" });
-      q("#pl-add-qty").value = "";
-      renderLines();
+    renderAvail();
+    q("#pl-find").addEventListener("input", renderAvail);
+    // Catalog cards (left): Add / − / + / typed quantity
+    q("#pl-avail").addEventListener("click", (e) => {
+      const el = e.target.closest("[data-add],[data-inc],[data-dec]");
+      if (!el) return;
+      const x = shown[Number(el.dataset.ck)];
+      if (!x) return;
+      const cur = openLine(x.k);
+      setLineQty(x, el.matches("[data-add]") ? 1 : (cur ? Number(cur.quantity) : 0) + (el.matches("[data-inc]") ? 1 : -1));
     });
-    root.addEventListener("click", (e) => {
-      const b = e.target.closest("[data-rm]");
-      if (!b) return;
-      lines.splice(Number(b.dataset.rm), 1);
-      renderLines();
+    q("#pl-avail").addEventListener("change", (e) => {
+      if (!e.target.matches("[data-qty]")) return;
+      const x = shown[Number(e.target.dataset.ck)];
+      if (x) setLineQty(x, e.target.value);
+    });
+    // Plan lines (right): − / + / typed quantity / remove
+    const lineQty = (i, qty) => {
+      const l = lines[i];
+      if (!l) return;
+      qty = Math.max(0, Math.floor(Number(qty) || 0));
+      const x = catRows().find((c) => c.k === lineKey(l.item_sku, l.from_location, l.lot, l.property_owner));
+      if (x && qty > x.base) { toast(`Only ${fmtNum(x.base)} free of that line.`, "error"); qty = x.base; }
+      if (qty <= 0) lines.splice(i, 1); else l.quantity = qty;
+      renderLines(); renderAvail();
+    };
+    q("#pl-lines").addEventListener("click", (e) => {
+      const el = e.target.closest("[data-inc],[data-dec],[data-rm]");
+      if (!el) return;
+      if (el.matches("[data-rm]")) return lineQty(Number(el.dataset.rm), 0);
+      const i = Number(el.dataset.li);
+      lineQty(i, Number(lines[i] && lines[i].quantity) + (el.matches("[data-inc]") ? 1 : -1));
+    });
+    q("#pl-lines").addEventListener("change", (e) => {
+      if (e.target.matches("[data-qty]")) lineQty(Number(e.target.dataset.li), e.target.value);
     });
   }
 
