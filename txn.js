@@ -99,7 +99,7 @@ export function validateLines(lines) {
       if (Number(l.qty) > have) errors.push(`${n}only ${have} on hand at ${codeLabel(l.from)} — can't take ${l.qty}.`);
       running.set(k, have - Number(l.qty));
     }
-    if (l.type === "Move" && l.to) {
+    if ((l.type === "Move" || l.type === "Receive") && l.to) {
       const k = key(l.sku, l.to, l.lot, l.owner);
       const have = running.has(k) ? running.get(k) : startQty(l.sku, l.to, l.lot, l.owner);
       running.set(k, have + Number(l.qty));

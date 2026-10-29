@@ -12,7 +12,8 @@ import { onHand } from "./data.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
 import { submitTransactions, summarizeResults } from "./txn.js";
 import { openStage, openMove } from "./dialogs.js";
-import { ownersActive, canActOn, ownerName, sameOwner } from "./owners.js";
+import { ownersActive, canActOn, ownerName, sameOwner, canLeaveUnowned, receiveChoices } from "./owners.js";
+import { itemPicker } from "./widgets.js";
 
 /** Owner option for plannedQty: only compared when property owners are on. */
 const ownOpt = (r) => (ownersActive() ? { owner: String(r.property_owner || "") } : {});
@@ -21,6 +22,11 @@ import {
 } from "./shipments.js";
 
 const refresh = () => S.actions.refresh && S.actions.refresh();
+
+/** A plan line with this as its "from" is a direct shipment: it never sits in stock. It is received and shipped in one go. */
+export const DIRECT = "DIRECT";
+const isDirect = (code) => String(code || "") === DIRECT;
+const fromLabel = (code) => (isDirect(code) ? "Direct, not from stock" : codeLabel(code));
 
 export const picklineRows = () =>
   S.balances.filter((r) => isPicklineRow(r) && onHand(r) > 0).sort((a, b) => balanceCode(a).localeCompare(balanceCode(b)) || itemName(a).localeCompare(itemName(b)));
@@ -211,6 +217,7 @@ export function openPlan(header, { preset = null } = {}) {
           <div class="pill-row" id="pl-src" role="group" aria-label="Where to add items from">
             <button type="button" class="pill active" data-src="pick" aria-pressed="true">Pick line</button>
             <button type="button" class="pill" data-src="inv" aria-pressed="false">Inventory</button>
+            <button type="button" class="pill" data-src="direct" aria-pressed="false">Direct</button>
           </div>
           <input id="pl-find" type="search" placeholder="Search the pick line: item, make, model, barcode, lot…" autocomplete="off" aria-label="Search the pick line" />
         </div>
@@ -292,9 +299,32 @@ export function openPlan(header, { preset = null } = {}) {
     </article>`;
   };
 
+  // Direct shipment form (items from the Barcode Library that come in and go straight out).
+  let directMounted = false, lastDirectOwner = "";
+  function renderDirect() {
+    const host = q("#pl-avail");
+    if (directMounted && host.querySelector("#dr-item")) return;
+    const choices = receiveChoices();
+    host.innerHTML = `<div class="card pl-direct">
+      <p class="sub">For stock that comes in and goes straight out. It is received onto the pick line and shipped when the plan ships, so the history shows both and the stock balance ends where it started.</p>
+      <div id="dr-item"></div>
+      <div class="two-col">
+        <label>Quantity <input id="dr-qty" type="number" min="1" step="1" inputmode="numeric" data-qty /></label>
+        <label>Lot / reference (optional) <input id="dr-lot" /></label>
+      </div>
+      ${ownersActive() ? `<label>Property owner${canLeaveUnowned() ? "" : " *"}
+        <select id="dr-owner">${canLeaveUnowned() ? `<option value="">— No owner (shared warehouse stock) —</option>` : choices.length > 1 ? `<option value="">Choose…</option>` : ""}${choices.map((o) => `<option value="${esc(o.code)}" ${o.code === lastDirectOwner ? "selected" : ""}>${esc(o.name)}</option>`).join("")}</select></label>` : ""}
+      <button type="button" class="btn-primary" id="dr-add">Add to plan</button></div>`;
+    directPicker = itemPicker(host.querySelector("#dr-item"), { mode: "library" });
+    directMounted = true;
+  }
+  let directPicker = null;
+
   function renderAvail() {
     const host = q("#pl-avail");
     if (!host) return;
+    if (source === "direct") return renderDirect();
+    directMounted = false;
     const term = (q("#pl-find").value || "").trim().toLowerCase();
     shown = catRows().filter((x) => {
       if (!term) return true;
@@ -312,7 +342,7 @@ export function openPlan(header, { preset = null } = {}) {
           const edit = canEdit && l.status !== "Shipped";
           return `<div class="cart-line" data-li="${i}">
             <div class="cart-line-main"><div class="cart-line-title">${esc(l.item_desc || l.item_sku)}</div>
-              <div class="cart-line-sub">${esc(l.item_sku || "")} · <span class="mono">${esc(codeLabel(l.from_location))}</span>${isPicklineCode(l.from_location) ? "" : ` <span class="tag">from inventory</span>`}${l.lot ? " · lot " + esc(l.lot) : ""}${l.property_owner ? ` · <span class="owner-tag">${esc(ownerName(l.property_owner))}</span>` : ""}${l.status && l.status !== "Planned" ? ` · ${esc(l.status)}` : ""}${l.note ? `<div>${esc(l.note)}</div>` : ""}</div></div>
+              <div class="cart-line-sub">${esc(l.item_sku || "")} · ${isDirect(l.from_location) ? `<span class="tag">direct</span>` : `<span class="mono">${esc(codeLabel(l.from_location))}</span>${isPicklineCode(l.from_location) ? "" : ` <span class="tag">from inventory</span>`}`}${l.lot ? " · lot " + esc(l.lot) : ""}${l.property_owner ? ` · <span class="owner-tag">${esc(ownerName(l.property_owner))}</span>` : ""}${l.status && l.status !== "Planned" ? ` · ${esc(l.status)}` : ""}${l.note ? `<div>${esc(l.note)}</div>` : ""}</div></div>
             ${edit ? stepper(l.quantity, `data-li="${i}"`) : `<div class="num">${fmtNum(l.quantity)}${l.unit ? ` <span class="sub">${esc(l.unit)}</span>` : ""}</div>`}
             ${edit ? `<button type="button" class="icon-btn" data-rm="${i}" aria-label="Remove line">&times;</button>` : "<span></span>"}</div>`;
         }).join("") + `<div class="cart-summary">${lines.length} line${lines.length === 1 ? "" : "s"} · ${fmtNum(lines.reduce((n, l) => n + Number(l.quantity || 0), 0))} units</div>`
@@ -325,8 +355,28 @@ export function openPlan(header, { preset = null } = {}) {
     const setSource = (src) => {
       source = src;
       q("#pl-src").querySelectorAll("[data-src]").forEach((b) => { const on = b.dataset.src === src; b.classList.toggle("active", on); b.setAttribute("aria-pressed", String(on)); });
+      q("#pl-find").hidden = src === "direct";
       renderAvail();
     };
+    q("#pl-avail").addEventListener("click", (e) => {
+      if (!e.target.closest("#dr-add")) return;
+      const picked = directPicker && directPicker.get();
+      if (!picked) return toast("Choose the item first.", "error");
+      const qty = Number(q("#dr-qty").value);
+      if (!(qty > 0) || Math.round(qty) !== qty) return toast("Enter a whole quantity.", "error");
+      const owner = ownersActive() ? q("#dr-owner").value : "";
+      if (ownersActive() && !owner && !canLeaveUnowned()) return toast("Choose the property owner.", "error");
+      if (ownersActive() && owner && !receiveChoices().some((o) => sameOwner(o.code, owner))) return toast("You can't ship stock for that property owner.", "error");
+      lastDirectOwner = owner;
+      const lot = q("#dr-lot").value.trim();
+      const k = lineKey(picked.sku, DIRECT, lot, owner);
+      const same = lines.find((l) => l.status !== "Shipped" && lineKey(l.item_sku, l.from_location, l.lot, l.property_owner) === k);
+      if (same) same.quantity = Number(same.quantity) + qty;
+      else lines.push({ item_sku: normSku(picked.sku), item_desc: picked.name, unit: unitLabel(picked.lib || findLib(picked.sku)), quantity: qty, lot, from_location: DIRECT, property_owner: ownersActive() ? owner : "", status: "Planned" });
+      directMounted = false; // rebuild the form, clearing it for the next item
+      renderLines(); renderAvail();
+      toast("Added to the plan.", "success", 1800);
+    });
     q("#pl-src").addEventListener("click", (e) => { const b = e.target.closest("[data-src]"); if (b) setSource(b.dataset.src); });
     if (preset && preset.sku) {
       const has = catRows("pick").some((x) => normSku(x.r.item_sku) === normSku(preset.sku));
@@ -396,11 +446,12 @@ export function openPlan(header, { preset = null } = {}) {
     const errs = validateHeader(h, lines);
     if (errs.length) throw new Error(errs.join(" "));
     const pending = lines.filter((l) => l.status !== "Shipped");
-    const fromStorage = pending.filter((l) => !isPicklineCode(l.from_location)).length;
+    const direct = pending.filter((l) => isDirect(l.from_location)).length;
+    const fromStorage = pending.filter((l) => !isPicklineCode(l.from_location) && !isDirect(l.from_location)).length;
     const total = pending.reduce((n, l) => n + Number(l.quantity) - (Number(l.qty_shipped) || 0), 0);
     const ok = await confirmDialog({
       title: "Ship now?",
-      message: `Ship ${fmtNum(total)} item(s) in ${pending.length} line(s) to ${h.ship_to_name}? This takes them out of inventory.${fromStorage ? ` ${fromStorage} line(s) are still in storage and will be moved to the pick line first.` : ""}`,
+      message: `Ship ${fmtNum(total)} item(s) in ${pending.length} line(s) to ${h.ship_to_name}? This takes them out of inventory.${fromStorage ? ` ${fromStorage} line(s) are still in storage and will be moved to the pick line first.` : ""}${direct ? ` ${direct} direct line(s) will be received onto the pick line, then shipped.` : ""}`,
       confirmLabel: "Ship",
     });
     if (!ok) return false;
@@ -426,7 +477,13 @@ export async function shipPlan(header) {
   const plan = planLines.map((l) => {
     const qty = Number(l.quantity) - (Number(l.qty_shipped) || 0);
     let from = l.from_location, moveIdx = null;
-    if (!isPicklineCode(from)) {
+    if (isDirect(from)) {
+      // Direct shipment: receive onto the pick line, then ship from it.
+      if (!lane) throw new Error("There is no pick-line lane to receive into.");
+      moveIdx = txnLines.length;
+      txnLines.push({ type: "Receive", sku: l.item_sku, name: l.item_desc, qty, lot: l.lot || "", to: lane.code, owner: l.property_owner || "", extra: { shipment_id: id } });
+      from = lane.code;
+    } else if (!isPicklineCode(from)) {
       if (!lane) throw new Error("There is no pick-line lane to stage stock into.");
       moveIdx = txnLines.length;
       txnLines.push({ type: "Move", sku: l.item_sku, name: l.item_desc, qty, lot: l.lot || "", from, to: lane.code, owner: l.property_owner || "", extra: { shipment_id: id } });
@@ -447,7 +504,7 @@ export async function shipPlan(header) {
       // The stock already moved to the pick line, so a retry ships from there.
       patches.push({ line: p.line, patch: { status: "Failed", note: String(ship.message || "").slice(0, 250), ...(move && move.ok ? { from_location: p.from } : {}) } });
     } else if (move && !move.ok) {
-      patches.push({ line: p.line, patch: { status: "Failed", note: `Couldn't stage from storage: ${String(move.message || "")}`.slice(0, 250) } });
+      patches.push({ line: p.line, patch: { status: "Failed", note: `Couldn't ${isDirect(p.line.from_location) ? "receive it" : "stage from storage"}: ${String(move.message || "")}`.slice(0, 250) } });
     } else if (move && move.ok) {
       patches.push({ line: p.line, patch: { status: "Failed", note: "Staged to the pick line; ship it again.", from_location: p.from } });
     }
@@ -468,7 +525,7 @@ export async function shipPlan(header) {
 // Pick sheet (print)
 // ---------------------------------------------------------------------------------------------
 export function pickSheetHtml(h, lines) {
-  const rows = lines.map((l) => `<tr><td>${esc(l.item_desc || "")}<br><small>${esc(l.item_sku || "")}</small></td><td>${esc(codeLabel(l.from_location))}</td><td>${esc(l.lot || "")}</td><td style="text-align:right">${fmtNum(l.quantity)}</td><td style="width:70px"></td></tr>`).join("");
+  const rows = lines.map((l) => `<tr><td>${esc(l.item_desc || "")}<br><small>${esc(l.item_sku || "")}</small></td><td>${esc(fromLabel(l.from_location))}</td><td>${esc(l.lot || "")}</td><td style="text-align:right">${fmtNum(l.quantity)}</td><td style="width:70px"></td></tr>`).join("");
   return `<!doctype html><html><head><meta charset="utf-8"><title>Pick sheet ${esc(h.shipment_id)}</title>
 <style>body{font:14px Arial,sans-serif;margin:24px;color:#111}h1{font-size:20px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:14px}th,td{border:1px solid #888;padding:6px 8px;text-align:left}th{background:#eee}.meta td{border:0;padding:2px 12px 2px 0}</style></head><body>
 <h1>Pick sheet — ${esc(h.shipment_id)}</h1>
