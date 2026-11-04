@@ -219,3 +219,10 @@
 .pin-empty { background: #8b95a5; } .pin-off { background: #b9bec7; opacity: 0.7; }
 .pin-low { background: #2e8b57; } .pin-mid { background: #d98e04; } .pin-full { background: #c53030; } .pin-has { background: #1d5fbf; }
 @media (max-width: 900px) { .map-wrap { grid-template-columns: minmax(0, 1fr); } .map-el { height: 55vh; min-height: 320px; } .map-side { max-height: none; } }
+
+/* Location suggestions under the From / To boxes (locpicker.js) */
+.loc-sug { display: flex; flex-direction: column; gap: 0.25rem; margin: 0 0 0.7rem; max-height: 16rem; overflow: auto; }
+.loc-opt { text-align: left; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.6rem; }
+.loc-opt.active { outline: 2px solid var(--navy, #002868); outline-offset: -2px; }
+.loc-tag { font-size: 0.7rem; font-weight: 700; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--info-bg); }
+.loc-detail { flex-basis: 100%; }
