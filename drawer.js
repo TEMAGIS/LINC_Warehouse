@@ -163,6 +163,8 @@ function act(e) {
     // one place to move from: open the Move dialog ready to go; several: pick the shelf on the Locations tab
     const rowsHere = rowsFor(sku).filter((r) => canActOn(r.property_owner));
     if (rowsHere.length === 1) { const r = rowsHere[0]; return openMove({ from: balanceCode(r), sku, lot: r.lot_number || "" }); }
+    // several places: open Move with the From list showing just the shelves that hold this item
+    if (rowsHere.length > 1) return openMove({ sku });
     cur.tab = "where"; render();
     return toast("Choose the shelf to move from with the Move button beside it.", "info");
   }
