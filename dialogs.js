@@ -11,6 +11,8 @@ import { balancesAtCode, balancesForSku, onHand } from "./data.js";
 import { balanceCode, codeLabel, parseCode, picklineLanes, isPicklineRow, isPicklineCode } from "./loc.js";
 import { submitTransactions, summarizeResults } from "./txn.js";
 import { itemPicker, scanInput, wireScan } from "./widgets.js";
+import { attachLocationSuggest, rememberLocation } from "./locpicker.js";
+import { parseBayInput, bayLabel } from "./locations.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel, ci } from "./units.js";
 import { ownersActive, canActOn, canLeaveUnowned, receiveChoices, ownerName } from "./owners.js";
 
@@ -35,16 +37,30 @@ function bindLocationHint(root, id, { requirePicklineHint = false } = {}) {
     const raw = input.value.trim();
     if (!raw) { hint.textContent = ""; return; }
     const p = parseCode(raw);
+    const bay = !p && parseBayInput(raw);
+    if (bay) { hint.className = "hint"; hint.textContent = `Bay ${bayLabel(bay)}: add the level and position (2 characters each).`; return; }
     if (!p) { hint.textContent = "Location codes are 8 or 10 characters (e.g. Z1AA0101P1)."; hint.className = "form-error"; return; }
     hint.className = "hint";
     hint.textContent = `→ ${codeLabel(raw)}${isPicklineCode(raw) ? " (pick line)" : ""}`;
   };
+  // location codes are always upper case: show them that way as they are typed, scanned or picked
+  const up = () => {
+    const v = input.value, u = v.toUpperCase();
+    if (u === v) return;
+    const s = input.selectionStart, e = input.selectionEnd;
+    input.value = u;
+    try { input.setSelectionRange(s, e); } catch { /* not supported while hidden */ }
+  };
+  input.addEventListener("input", up);
+  input.addEventListener("change", up);
   input.addEventListener("input", upd);
   input.addEventListener("change", upd);
+  up();
   upd();
 }
 const locBox = (id, label, value = "") =>
-  `${scanInput({ id, label, placeholder: "Scan or type the location", value })}<div class="hint" id="${id}-hint"></div>`;
+  `${scanInput({ id, label, placeholder: "Scan, type, or pick from the list", value })}<div class="hint" id="${id}-hint"></div>
+  <div class="loc-sug" id="${id}-sug" role="listbox" aria-label="Suggested locations" hidden></div>`;
 
 // ---------------------------------------------------------------------------------------------
 // Receive
@@ -79,6 +95,7 @@ export function openReceive({ again = false, sku = "" } = {}) {
   const $ = (id) => root.querySelector("#" + id);
   wireScan(root);
   bindLocationHint(root, "rc-to");
+  attachLocationSuggest(root, "rc-to", { kind: "to", prefer: () => (picked ? [picked.sku] : []) });
   const picker = itemPicker($("rc-item"), {
     mode: "library",
     onPick: (p) => {
@@ -111,6 +128,7 @@ export function openReceive({ again = false, sku = "" } = {}) {
     const owner = ownersActive() ? $("rc-owner").value : "";
     if (ownersActive() && !owner && !canLeaveUnowned()) throw new Error("Choose the property owner.");
     await run([{ type: "Receive", sku: picked.sku, name: picked.name, qty, lot: $("rc-lot").value.trim(), to: to.code, owner }]);
+    rememberLocation(to.code);
     lastOwner = owner;
   }
   return m;
@@ -139,6 +157,13 @@ export function openMove({ from = "", sku = "", lot = undefined } = {}) {
   bindLocationHint(root, "mv-from");
   bindLocationHint(root, "mv-to");
   let rows = [];
+  attachLocationSuggest(root, "mv-from", { kind: "from", prefer: () => (sku ? [sku] : []), onPick: () => $("mv-to").focus() });
+  attachLocationSuggest(root, "mv-to", {
+    kind: "to",
+    prefer: () => (sku ? [sku] : rows.map((r) => normSku(r.item_sku))),
+    exclude: () => { const f = parseCode($("mv-from").value); return f ? f.code : ""; },
+  });
+  if (!from) $("mv-from").focus();
 
   const renderContents = () => {
     const p = parseCode($("mv-from").value);
@@ -177,6 +202,7 @@ export function openMove({ from = "", sku = "", lot = undefined } = {}) {
     });
     if (!lines.length) throw new Error("Tick at least one item to move.");
     await run(lines);
+    rememberLocation(to.code);
   }
   return m;
 }
