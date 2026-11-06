@@ -8,7 +8,7 @@ import { openModal, toast } from "./shared/ui.js";
 import { esc } from "./shared/util.js";
 import { S, itemName, findLib, normSku } from "./state.js";
 import { balancesAtCode, balancesForSku, onHand } from "./data.js";
-import { balanceCode, codeLabel, parseCode, picklineLanes, isPicklineRow, isPicklineCode } from "./loc.js";
+import { balanceCode, codeLabel, segmentsLabel, parseCode, picklineLanes, isPicklineRow, isPicklineCode } from "./loc.js";
 import { submitTransactions, summarizeResults } from "./txn.js";
 import { itemPicker, scanInput, wireScan } from "./widgets.js";
 import { attachLocationSuggest, rememberLocation } from "./locpicker.js";
@@ -41,7 +41,7 @@ function bindLocationHint(root, id, { requirePicklineHint = false } = {}) {
     if (bay) { hint.className = "hint"; hint.textContent = `Bay ${bayLabel(bay)}: add the level and position (2 characters each).`; return; }
     if (!p) { hint.textContent = "Location codes are 8 or 10 characters (e.g. Z1AA0101P1)."; hint.className = "form-error"; return; }
     hint.className = "hint";
-    hint.textContent = `→ ${codeLabel(raw)}${isPicklineCode(raw) ? " (pick line)" : ""}`;
+    hint.textContent = `→ ${codeLabel(raw)}${isPicklineCode(raw) ? ` (${segmentsLabel(raw)})` : ""}`;
   };
   // location codes are always upper case: show them that way as they are typed, scanned or picked
   const up = () => {
@@ -241,9 +241,9 @@ export function openStage({ sku = "" } = {}) {
       <div class="rv-totals" id="st-sum"></div>
     </div>
     <label ${lanes.length > 1 ? "" : "hidden"}>Pick-line lane
-      <select id="st-lane">${lanes.map((l) => `<option value="${l.code}">Lane ${l.lane} · ${esc(l.label)}</option>`).join("")}</select>
+      <select id="st-lane">${lanes.map((l) => `<option value="${l.code}">${esc(l.label)} · ${esc(segmentsLabel(l.code))}</option>`).join("")}</select>
     </label>
-    <div class="hint">Stages to <strong id="st-dest">${esc(lanes[0].label)}</strong> (pick line).</div>`;
+    <div class="hint">Stages to <strong id="st-dest">${esc(lanes[0].label)}</strong>.</div>`;
   const m = openModal({
     title: "Stage to pick line",
     body,

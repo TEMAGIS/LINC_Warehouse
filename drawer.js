@@ -88,7 +88,7 @@ function render() {
         const mine = canActOn(r.property_owner);
         const pl = isPicklineRow(r);
         return `<tr>
-          <td><span class="mono">${esc(codeLabel(code))}</span>${pl ? ` <span class="tag">Pick line</span>` : ""}${r.lot_number ? `<div class="sub">lot ${esc(r.lot_number)}</div>` : ""}${ownersActive() && r.property_owner ? `<div class="sub"><span class="owner-tag">${esc(ownerName(r.property_owner))}</span></div>` : ""}</td>
+          <td>${pl ? `<span class="tag">${esc(codeLabel(code))}</span>` : `<span class="mono">${esc(codeLabel(code))}</span>`}${r.lot_number ? `<div class="sub">lot ${esc(r.lot_number)}</div>` : ""}${ownersActive() && r.property_owner ? `<div class="sub"><span class="owner-tag">${esc(ownerName(r.property_owner))}</span></div>` : ""}</td>
           <td class="num">${fmtNum(onHand(r))}</td>
           <td class="dr-btns">${edit && mine ? `<button type="button" data-d="move" data-code="${esc(code)}" data-lot="${esc(r.lot_number || "")}">Move</button>${pl ? "" : `<button type="button" data-d="stage">To pick line</button>`}<button type="button" data-d="adjust" data-oid="${esc(r._oid)}" title="Write off: damaged, expired, lost, miscount">Adjust</button>` : ""}${edit && S.isAdmin && ownersActive() ? `<button type="button" data-d="owner" data-oid="${esc(r._oid)}">Owner</button>` : ""}${edit && S.isAdmin ? `<button type="button" class="btn-danger" data-d="delete" data-oid="${esc(r._oid)}" title="Delete test / fake stock">Delete</button>` : ""}</td></tr>`;
       }).join("")

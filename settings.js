@@ -7,7 +7,7 @@ import { CONFIG } from "./config.js";
 import { $, esc } from "./shared/util.js";
 import { openModal, toast, confirmDialog } from "./shared/ui.js";
 import { S } from "./state.js";
-import { picklineLanes } from "./loc.js";
+import { picklineLanes, segmentsLabel } from "./loc.js";
 import { createShipmentsService, discoverShipments, loadShipments, addUsersTable, addOwnersTable } from "./shipments.js";
 import { loadUsers } from "./users.js";
 import { missingFields, addMissingFields, LABELS } from "./schemafix.js";
@@ -321,7 +321,7 @@ export function renderSettings() {
         ${ship.ready ? `<div class="card"><h2>User list</h2>${S.usersReady ? `<p class="stock-ok">Users table found · ${S.users.length} ${S.users.length === 1 ? "person" : "people"}.</p><p class="sub">Only people on the list can open the app. Manage them on the Users tab.</p>` : `<p class="stock-out">Users table not set up.</p>`}</div>` : ""}
         <div class="card"><h2>Pick line</h2>
           <p>Zone <code>${esc(CONFIG.PICKLINE.ZONE)}</code> · ${lanes.length} lane${lanes.length > 1 ? "s" : ""}</p>
-          <p class="sub">${lanes.map((l) => `${esc(l.label)} (scan ${esc(l.code)})`).join("<br>")}</p>
+          <p class="sub">${lanes.map((l) => `${esc(l.label)}: ${esc(segmentsLabel(l.code))} (scan ${esc(l.code)})`).join("<br>")}</p>
           <p class="hint">Print location labels for each lane. To add lanes, raise <code>PICKLINE.LANES</code> in <code>config.js</code>.</p></div>
         ${rep.map((r) => `<div class="card"><h2>${esc(r.label)} fields</h2>
           ${!r.known ? `<p class="sub">Couldn't read the layer's fields.</p>`

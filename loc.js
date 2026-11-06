@@ -31,11 +31,25 @@ export function parseCode(raw) {
   };
 }
 
-/** Code -> "Z1-AA-01-01-P1" */
-export function codeLabel(raw) {
+/** Code -> "Z1-AA-01-01-P1" (always the dashed code, even for the pick line). */
+export function segmentsLabel(raw) {
   const p = parseCode(raw);
   if (!p) return cleanScan(raw);
   return [p.zone, p.row, p.bay, p.level, p.position].filter(Boolean).join("-");
+}
+
+/** Display name of a pick-line code: "Pick line" (one lane) or "Pick line 2"; null for any other code. */
+export function picklineName(raw) {
+  const p = parseCode(raw);
+  if (!p || !isPicklineZone(p.zone)) return null;
+  const lane = Number(p.row) || 1;
+  return Math.max(1, Number(CONFIG.PICKLINE.LANES) || 1) > 1 || lane > 1 ? `Pick line ${lane}` : "Pick line";
+}
+
+/** What people see for a location: "Pick line" for the pick line, otherwise "Z1-AA-01-01-P1".
+ *  Display only; the stored codes and segment fields don't change. */
+export function codeLabel(raw) {
+  return picklineName(raw) || segmentsLabel(raw);
 }
 
 /** Inventory Balance row -> its code (zone, aisle, bay, level, position; blanks skipped). */

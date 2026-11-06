@@ -161,7 +161,7 @@ function renderRows() {
         const segVals = r.zone ? segs : segs.slice(1);
         return `<tr class="row-click" data-sku="${esc(normSku(r.item_sku))}">
           <td>${itemCell(r, lib)}</td>
-          <td><span class="mono">${esc(codeLabel(code))}</span>${pl ? ` <span class="tag">Pick line</span>` : ""}
+          <td>${pl ? `<span class="tag">${esc(codeLabel(code))}</span>` : `<span class="mono">${esc(codeLabel(code))}</span>`}
             <div class="sub">${labels.map((l, i) => `${l} ${esc(segVals[i] ?? "")}`).join(" · ")}</div></td>
           <td class="col-lot">${esc(r.lot_number || "")}</td>
           ${showOwner() ? `<td>${r.property_owner ? `<span class="owner-tag">${esc(ownerName(r.property_owner))}</span>` : `<span class="sub">—</span>`}</td>` : ""}

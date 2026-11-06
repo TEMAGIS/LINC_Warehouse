@@ -23,6 +23,8 @@ The pick line is a reserved **zone code, `PL`**. Each lane is one location in th
 
 `PL` + lane + `01` + `01` + `01` → lane 1 is **`PL01010101`** (shown as `PL-01-01-01-01`).
 
+Everywhere in the app it is shown as **Pick line** (lanes as *Pick line 1*, *Pick line 2*, … once there is more than one); the dashed code still appears in hints and Settings. Only the display changes: the stored codes and segment fields are the same. Note that `PL010101` (8 characters) is *not* the pick line; it reads as row PL, bay 01, level 01, position 01 with no zone.
+
 It starts with **one lane**. To add lanes, raise `PICKLINE.LANES` in `config.js` (lane 2 = `PL02010101`, …). The lane picker in Stage appears automatically once there's more than one. No layer changes are needed, since `PL` is just another zone value. Print a location label for each lane.
 
 **Ship is only possible from the pick line.** The app refuses it. While the Survey123 form is still in use, the webhook Lambda enforces the same rule for the form (setup step 4).
