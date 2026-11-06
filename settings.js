@@ -25,7 +25,7 @@ const NEED = {
     label: "Transactions",
     required: ["site", "transaction_type", "item_sku", "quantity", "lot", "from_location_scan", "from_zone", "from_row", "from_bay", "from_level", "from_position",
       "to_location_scan", "to_zone", "to_row", "to_bay", "to_level", "to_position", "transaction_datetime", "performed_by", "processing_status", "processing_error"],
-    optional: ["shipment_id", "ship_to", "unit_of_measure", "firstname", "lastname", "property_owner"],
+    optional: ["shipment_id", "ship_to", "unit_of_measure", "firstname", "lastname", "property_owner", "adjust_reason"],
   },
   lib: {
     label: "Barcode Library",

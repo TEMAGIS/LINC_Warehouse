@@ -5,7 +5,7 @@
 //   * All-or-nothing: every leg is validated before anything is written. A leg that would go
 //     negative, or has no stock to take from, rejects the whole transaction.
 //   * A Move's two balance rows are written in ONE applyEdits call (ArcGIS rolls both back on failure).
-//   * Ship is only allowed from the pick line.
+//   * Ship is only allowed from the pick line. Adjust (write-off) takes from any shelf.
 // Rows are matched on site + item + location segments + lot with NULL-safe clauses (hosted layers
 // store empty strings as NULL), so a blank zone / lot never creates a duplicate balance row.
 // ---------------------------------------------------------------------------
@@ -52,6 +52,8 @@ export function planMoves(attrs) {
     return [["from_", -qty]];
   }
   if (type === "Move") return [["from_", -qty], ["to_", qty]];
+  if (type === "Adjust") return [["from_", -qty]]; // write-off (damaged, expired, lost, count correction); any shelf
+
   throw new TransactionApplyError(`unrecognized transaction_type: ${type}`);
 }
 

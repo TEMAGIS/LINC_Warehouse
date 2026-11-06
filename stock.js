@@ -12,6 +12,7 @@ import { scanOnce } from "./scanner.js";
 import { openReceive, openMove, openStage } from "./dialogs.js";
 import { openAddToLibrary } from "./library.js";
 import { openDrawer } from "./drawer.js";
+import { openAdjust, openDeleteStock } from "./remove.js";
 import { openModal, toast } from "./shared/ui.js";
 import { ownersActive, canActOn, ownerName, ownerCodesInUse, sameOwner, setStockOwner } from "./owners.js";
 
@@ -61,6 +62,8 @@ export function initStock() {
     else if (a === "rowmove") openMove({ from: b.dataset.code, sku: b.dataset.sku, lot: b.dataset.lot });
     else if (a === "rowowner") openSetOwner(S.balances.find((r) => String(r._oid) === b.dataset.oid));
     else if (a === "rowstage") openStage({ sku: b.dataset.sku });
+    else if (a === "rowadjust") openAdjust(S.balances.find((r) => String(r._oid) === b.dataset.oid));
+    else if (a === "rowdelete") openDeleteStock(S.balances.find((r) => String(r._oid) === b.dataset.oid));
     else if (a === "scan") {
       const txt = await scanOnce("Scan a location or item barcode");
       if (txt) { F.q = txt; F.page = 1; $("#sk-q").value = txt; renderRows(); }
@@ -164,7 +167,7 @@ function renderRows() {
           ${showOwner() ? `<td>${r.property_owner ? `<span class="owner-tag">${esc(ownerName(r.property_owner))}</span>` : `<span class="sub">—</span>`}</td>` : ""}
           <td class="num oh ${q <= CONFIG.LOW_STOCK ? "stock-low" : ""}"><span class="oh-q">${fmtNum(q)}</span><div class="sub">${esc(unitLabel(lib, r.unit_of_measure))}</div>${g > 0 ? `<div class="sub">≈ ${fmtGallons(g)} gal</div>` : ""}</td>
           <td class="sub">${esc(fmtDateTime(r.last_update))}</td>
-          <td class="row-actions">${edit && S.isAdmin && ownersActive() ? `<button type="button" data-act="rowowner" data-oid="${esc(r._oid)}">Owner</button>` : ""}${edit && mine ? `<button type="button" data-act="rowmove" data-code="${esc(code)}" data-sku="${esc(normSku(r.item_sku))}" data-lot="${esc(r.lot_number || "")}">Move</button>${pl ? "" : `<button type="button" data-act="rowstage" data-sku="${esc(normSku(r.item_sku))}">To pick line</button>`}` : ""}</td>
+          <td class="row-actions">${edit && S.isAdmin && ownersActive() ? `<button type="button" data-act="rowowner" data-oid="${esc(r._oid)}">Owner</button>` : ""}${edit && mine ? `<button type="button" data-act="rowmove" data-code="${esc(code)}" data-sku="${esc(normSku(r.item_sku))}" data-lot="${esc(r.lot_number || "")}">Move</button>${pl ? "" : `<button type="button" data-act="rowstage" data-sku="${esc(normSku(r.item_sku))}">To pick line</button>`}<button type="button" data-act="rowadjust" data-oid="${esc(r._oid)}" title="Write off: damaged, expired, lost, miscount">Adjust</button>` : ""}${edit && S.isAdmin ? `<button type="button" class="btn-danger" data-act="rowdelete" data-oid="${esc(r._oid)}" title="Delete test / fake stock">Delete</button>` : ""}</td>
         </tr>`;
       }).join("")
     : `<tr><td colspan="${showOwner() ? 7 : 6}" class="empty">${S.balances.length ? "Nothing matches that search." : "No stock recorded yet."}</td></tr>`;

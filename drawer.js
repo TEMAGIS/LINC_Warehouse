@@ -15,6 +15,7 @@ import { ownersActive, canActOn, ownerName } from "./owners.js";
 import { plannedQty } from "./shipments.js";
 import { openEditDialog, libCanUpdate } from "./libtab.js";
 import { openSetOwner } from "./stock.js";
+import { openAdjust, openDeleteStock } from "./remove.js";
 
 let cur = null; // { sku }
 export const isDrawerOpen = () => !!cur;
@@ -89,7 +90,7 @@ function render() {
         return `<tr>
           <td><span class="mono">${esc(codeLabel(code))}</span>${pl ? ` <span class="tag">Pick line</span>` : ""}${r.lot_number ? `<div class="sub">lot ${esc(r.lot_number)}</div>` : ""}${ownersActive() && r.property_owner ? `<div class="sub"><span class="owner-tag">${esc(ownerName(r.property_owner))}</span></div>` : ""}</td>
           <td class="num">${fmtNum(onHand(r))}</td>
-          <td class="dr-btns">${edit && mine ? `<button type="button" data-d="move" data-code="${esc(code)}" data-lot="${esc(r.lot_number || "")}">Move</button>${pl ? "" : `<button type="button" data-d="stage">To pick line</button>`}` : ""}${edit && S.isAdmin && ownersActive() ? `<button type="button" data-d="owner" data-oid="${esc(r._oid)}">Owner</button>` : ""}</td></tr>`;
+          <td class="dr-btns">${edit && mine ? `<button type="button" data-d="move" data-code="${esc(code)}" data-lot="${esc(r.lot_number || "")}">Move</button>${pl ? "" : `<button type="button" data-d="stage">To pick line</button>`}<button type="button" data-d="adjust" data-oid="${esc(r._oid)}" title="Write off: damaged, expired, lost, miscount">Adjust</button>` : ""}${edit && S.isAdmin && ownersActive() ? `<button type="button" data-d="owner" data-oid="${esc(r._oid)}">Owner</button>` : ""}${edit && S.isAdmin ? `<button type="button" class="btn-danger" data-d="delete" data-oid="${esc(r._oid)}" title="Delete test / fake stock">Delete</button>` : ""}</td></tr>`;
       }).join("")
     : `<tr><td colspan="3" class="empty">None in stock.</td></tr>`;
 
@@ -98,7 +99,7 @@ function render() {
     ? `<ul class="timeline">${hist.map((t) => {
         const place = t.transaction_type === "Move" ? `${side(t, "from_")} → ${side(t, "to_")}` : t.transaction_type === "Receive" ? `into ${side(t, "to_")}` : `from ${side(t, "from_")}`;
         const st = String(t.processing_status || "Pending");
-        return `<li><b>${esc(t.transaction_type)}</b> ${fmtNum(t.quantity)} <span class="sub">${esc(place)}${t.shipment_id ? " · " + esc(t.shipment_id) : ""}</span>
+        return `<li><b>${esc(t.transaction_type)}</b> ${fmtNum(t.quantity)} <span class="sub">${esc(place)}${t.shipment_id ? " · " + esc(t.shipment_id) : ""}${t.adjust_reason ? " · " + esc(t.adjust_reason) : ""}</span>
           <div class="sub">${esc(fmtDateTime(t.transaction_datetime))} · ${esc(t.performed_by || "")}${st !== "Success" ? ` · <b>${esc(st)}</b>` : ""}</div></li>`;
       }).join("")}</ul>`
     : `<p class="sub">No transactions for this item yet.</p>`;
@@ -171,6 +172,8 @@ function act(e) {
   if (d === "move") return openMove({ from: b.dataset.code, sku, lot: b.dataset.lot });
   if (d === "stage") return openStage({ sku });
   if (d === "owner") return openSetOwner(S.balances.find((r) => String(r._oid) === b.dataset.oid));
+  if (d === "adjust") return openAdjust(S.balances.find((r) => String(r._oid) === b.dataset.oid));
+  if (d === "delete") return openDeleteStock(S.balances.find((r) => String(r._oid) === b.dataset.oid));
   if (d === "edit") { const lib = findLib(sku); if (lib) openEditDialog(lib); return; }
 }
 

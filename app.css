@@ -226,3 +226,5 @@
 .loc-opt.active { outline: 2px solid var(--navy, #002868); outline-offset: -2px; }
 .loc-tag { font-size: 0.7rem; font-weight: 700; padding: 0.05rem 0.5rem; border-radius: 999px; background: var(--info-bg); }
 .loc-detail { flex-basis: 100%; }
+/* Adjust (write-off) transactions */
+.txn-adjust { background: var(--warn-bg, #fff4e0); color: var(--warn, #8a5a00); }

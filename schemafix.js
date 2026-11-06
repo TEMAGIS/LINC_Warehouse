@@ -26,6 +26,7 @@ export const WANTED = {
     str("processing_error", 255, "Processing error"),
     dat("processed_at", "Processed at"),
     str("inventory_balance_gids", 500, "Inventory balance GlobalIDs"),
+    str("adjust_reason", 255, "Adjust reason"),
   ],
   bal: [
     str("last_transaction_id", 50, "Last transaction ID"),

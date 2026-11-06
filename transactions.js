@@ -105,7 +105,7 @@ export function renderTxns() {
   el.innerHTML = `
     <div class="toolbar">
       <input id="tx-q" type="search" placeholder="Item, barcode, location, person" value="${esc(F.q)}" aria-label="Search transactions" />
-      <select id="tx-type" aria-label="Type"><option value="">All types</option>${["Receive", "Move", "Ship"].map((t) => `<option ${F.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+      <select id="tx-type" aria-label="Type"><option value="">All types</option>${["Receive", "Move", "Ship", "Adjust"].map((t) => `<option ${F.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
       <select id="tx-status" aria-label="Status"><option value="">All statuses</option>${["Success", "Pending", "Error", "Voided"].map((t) => `<option ${F.status === t ? "selected" : ""}>${t}</option>`).join("")}</select>
       ${pending ? `<span class="tag tag-restricted">${pending} not applied</span>` : ""}
       <span class="spacer"></span>
@@ -174,7 +174,7 @@ export function totalsOf(rows, { status = "" } = {}) {
   const counted = status ? rows : rows.filter((t) => statusOf(t) === "Success");
   const items = new Map();
   const shipIds = new Set();
-  let shipUnits = 0, recvUnits = 0, moves = 0, looseShips = 0;
+  let shipUnits = 0, recvUnits = 0, moves = 0, looseShips = 0, adjUnits = 0;
   for (const t of counted) {
     const q = Number(t.quantity) || 0;
     const type = String(t.transaction_type || "");
@@ -187,11 +187,12 @@ export function totalsOf(rows, { status = "" } = {}) {
     if (type === "Ship") { g.ship += q; e.ship += q; g.gal += gallonsFor(lib, q); shipUnits += q; if (t.shipment_id) { shipIds.add(t.shipment_id); g.ids.add(t.shipment_id); } else looseShips += 1; }
     else if (type === "Receive") { g.recv += q; e.recv += q; recvUnits += q; }
     else if (type === "Move") { g.moved += q; e.moved += q; moves += 1; }
+    else if (type === "Adjust") adjUnits += q;
     g.skus.set(sk, e);
     items.set(key, g);
   }
   const list = [...items.values()].sort((a, b) => b.ship - a.ship || b.recv - a.recv || a.title.localeCompare(b.title));
-  return { counted: counted.length, skipped: rows.length - counted.length, shipments: shipIds.size, looseShips, shipUnits, recvUnits, moves, list };
+  return { counted: counted.length, skipped: rows.length - counted.length, shipments: shipIds.size, looseShips, shipUnits, recvUnits, moves, adjUnits, list };
 }
 
 function totalsView(rows) {
@@ -206,7 +207,7 @@ function totalsView(rows) {
     return head + subs;
   }).join("") : `<tr><td colspan="5" class="empty">Nothing to total.</td></tr>`;
   return `<div class="sub" style="margin:.2rem 0 .6rem">Totals for <b>${esc(range)}</b>${F.type ? ` · ${esc(F.type)}` : ""}${F.q ? ` · “${esc(F.q)}”` : ""}</div>
-    <div class="tiles">${tile(t.shipments, "Shipments", "tile-info")}${tile(t.shipUnits, "Units shipped")}${tile(t.recvUnits, "Units received")}${tile(t.moves, "Moves")}${tile(t.counted, "Transactions counted")}</div>
+    <div class="tiles">${tile(t.shipments, "Shipments", "tile-info")}${tile(t.shipUnits, "Units shipped")}${tile(t.recvUnits, "Units received")}${tile(t.moves, "Moves")}${t.adjUnits ? tile(t.adjUnits, "Units written off", "tile-warn") : ""}${tile(t.counted, "Transactions counted")}</div>
     <div class="table-wrap tall"><table class="grid"><thead><tr><th>Item</th><th class="num">Received</th><th class="num">Shipped</th><th class="num">Shipments</th><th class="num">Moved</th></tr></thead><tbody>${body}</tbody>
       <tfoot><tr><td><b>Total</b></td><td class="num"><b>${fmtNum(t.recvUnits)}</b></td><td class="num"><b>${fmtNum(t.shipUnits)}</b></td><td class="num"><b>${fmtNum(t.shipments)}</b></td><td class="num"><b>${fmtNum(t.list.reduce((n, g) => n + g.moved, 0))}</b></td></tr></tfoot></table></div>
     <div class="sub" style="margin:.4rem 0">${fmtNum(t.list.length)} item name${t.list.length === 1 ? "" : "s"}. Click a name with a ▸ to see its barcodes. Counts applied (Success) transactions${t.skipped ? `; ${fmtNum(t.skipped)} not applied, voided or in error are left out` : ""}. Units are added as plain counts, so a case and a single bottle each count as 1.${t.looseShips ? ` ${fmtNum(t.looseShips)} shipped line(s) have no shipment number, so they aren't in the Shipments count.` : ""}
@@ -233,14 +234,14 @@ function renderRows() {
         const st = statusOf(t);
         const lib = findLib(t.item_sku);
         const type = String(t.transaction_type || "");
-        const cls = type === "Ship" ? "txn-issue" : type === "Receive" ? "txn-receive" : "";
+        const cls = type === "Ship" ? "txn-issue" : type === "Receive" ? "txn-receive" : type === "Adjust" ? "txn-adjust" : "";
         return `<tr>
           <td class="sub">${esc(fmtDateTime(t.transaction_datetime))}</td>
           <td><span class="txn-type ${cls}">${esc(type)}</span></td>
           <td><span class="t">${esc(itemName(t))}</span><div class="sub">${esc(t.item_sku || "")}${t.lot ? " · lot " + esc(t.lot) : ""}${t.property_owner ? ` · <span class="owner-tag">${esc(ownerName(t.property_owner))}</span>` : ""}</div></td>
           <td class="num">${fmtNum(t.quantity)}<div class="sub">${esc(unitLabel(lib, t.unit_of_measure))}</div></td>
           <td class="mono">${esc(side(t, "from_"))}</td><td class="mono">${esc(side(t, "to_"))}</td>
-          <td class="sub">${esc(t.performed_by || "")}${t.shipment_id ? `<div>${esc(t.shipment_id)}</div>` : ""}</td>
+          <td class="sub">${esc(t.performed_by || "")}${t.shipment_id ? `<div>${esc(t.shipment_id)}</div>` : ""}${t.adjust_reason ? `<div>${esc(t.adjust_reason)}</div>` : ""}</td>
           <td><span class="status-pill ${stClass(st)}">${esc(st)}</span>${t.processing_error ? `<div class="sub">${esc(t.processing_error)}</div>` : ""}
             ${S.canEdit && st !== "Success" && st !== "Voided" && t.globalid ? `<button type="button" class="link-btn" data-act="retry" data-gid="${esc(t.globalid)}">Retry</button>` : ""}
             ${S.isAdmin && S.canEdit && st !== "Success" && st !== "Voided" && t.globalid ? `<button type="button" class="link-btn" data-act="void" data-gid="${esc(t.globalid)}">Void</button>` : ""}</td>
@@ -266,6 +267,7 @@ function exportCsv() {
     { label: "To", get: (t) => side(t, "to_") },
     { label: "By", key: "performed_by" },
     { label: "Shipment", key: "shipment_id" },
+    { label: "Adjust reason", key: "adjust_reason" },
     { label: "Status", get: (t) => statusOf(t) },
   ];
   downloadText(`linc_transactions_${new Date().toISOString().slice(0, 10)}.csv`, toCSV(rows, cols));

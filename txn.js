@@ -16,11 +16,11 @@ import { loadBalances, loadTransactions } from "./data.js";
 import { applyToBalance } from "./balance.js";
 import { ownersActive, canActOn, isScoped, sameOwner, ownerName, myOwnerCodes, receiveChoices } from "./owners.js";
 
-export const TXN_TYPES = ["Receive", "Move", "Ship"];
+export const TXN_TYPES = ["Receive", "Move", "Ship", "Adjust"];
 
 /**
- * line = { type: "Receive"|"Move"|"Ship", sku, qty, lot?, from?, to?, extra? }
- * `from` / `to` are location scan codes. Receive needs `to`; Ship needs `from`; Move both.
+ * line = { type: "Receive"|"Move"|"Ship"|"Adjust", sku, qty, lot?, from?, to?, extra? }
+ * `from` / `to` are location scan codes. Receive needs `to`; Ship and Adjust need `from`; Move both.
  */
 export function buildTxnAttrs(line) {
   const sku = String(line.sku || "").trim();
@@ -50,7 +50,7 @@ export function buildTxnAttrs(line) {
     if (w != null && w !== "") a.weight = w;
     if (d != null && d !== "") a.dimensions = d;
   }
-  if (line.type === "Move" || line.type === "Ship") Object.assign(a, strip(txnLocationAttrs(line.from, "from_")));
+  if (line.type === "Move" || line.type === "Ship" || line.type === "Adjust") Object.assign(a, strip(txnLocationAttrs(line.from, "from_")));
   if (line.type === "Move" || line.type === "Receive") Object.assign(a, strip(txnLocationAttrs(line.to, "to_")));
   return a;
 }
@@ -90,10 +90,11 @@ export function validateLines(lines) {
     }
     if (!(Number(l.qty) > 0) || Math.round(Number(l.qty)) !== Number(l.qty)) errors.push(`${n}quantity must be a whole number above 0.`);
     if ((l.type === "Receive" || l.type === "Move") && !l.to) errors.push(`${n}choose the destination location.`);
-    if ((l.type === "Move" || l.type === "Ship") && !l.from) errors.push(`${n}choose the source location.`);
+    if ((l.type === "Move" || l.type === "Ship" || l.type === "Adjust") && !l.from) errors.push(`${n}choose the source location.`);
+    if (l.type === "Adjust" && CONFIG.APPLY_MODE === "webhook") errors.push(`${n}Adjust needs APPLY_MODE "browser" (the webhook Lambda doesn't know it).`);
     if (l.type === "Ship" && l.from && !isPicklineCode(l.from)) errors.push(`${n}ships must come from the pick line. Stage it there first.`);
     if (l.type === "Move" && l.from && l.to && l.from === l.to) errors.push(`${n}from and to are the same location.`);
-    if ((l.type === "Move" || l.type === "Ship") && l.from && l.sku && Number(l.qty) > 0) {
+    if ((l.type === "Move" || l.type === "Ship" || l.type === "Adjust") && l.from && l.sku && Number(l.qty) > 0) {
       const k = key(l.sku, l.from, l.lot, l.owner);
       const have = running.has(k) ? running.get(k) : startQty(l.sku, l.from, l.lot, l.owner);
       if (Number(l.qty) > have) errors.push(`${n}only ${have} on hand at ${codeLabel(l.from)} — can't take ${l.qty}.`);
