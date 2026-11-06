@@ -140,7 +140,7 @@ export function initSettings() {
         toast(done.length ? `Added ${done.join(" · ")}` : "Nothing to add.", "success", 9000);
         if (done.length) { await loadUsers().catch(() => {}); await loadOwners().catch(() => {}); }
       } catch (err) {
-        toast(`Couldn't add fields: ${err.message}. This needs the account that owns the layers (or an org administrator).`, "error", 12000);
+        toast(`Couldn't add fields: ${err.message}${/ArcGIS Online|owns the source/.test(err.message) ? "" : ". This needs the account that owns the layers (or an org administrator)."}`, "error", 15000);
       }
       renderSettings();
     } else if (act === "add-users") {
