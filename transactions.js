@@ -40,7 +40,7 @@ export function filterTxns(rows, { q = "", type = "", status = "", from = "", to
       if (t1 !== null && when > t1) return false;
     }
     if (!ws.length) return true;
-    const hay = `${itemName(t)} ${t.item_sku || ""} ${t.lot || ""} ${side(t, "from_")} ${side(t, "to_")} ${t.performed_by || ""} ${t.shipment_id || ""} ${ownerName(t.property_owner)}`.toLowerCase();
+    const hay = `${itemName(t)} ${t.make || ""} ${t.model || ""} ${t.description || ""} ${t.adjust_reason || ""} ${t.item_sku || ""} ${t.lot || ""} ${side(t, "from_")} ${side(t, "to_")} ${t.performed_by || ""} ${t.shipment_id || ""} ${ownerName(t.property_owner)}`.toLowerCase();
     const codes = `${cleanScan(side(t, "from_"))} ${cleanScan(side(t, "to_"))}`.toLowerCase();
     return ws.every((w) => hay.includes(w) || codes.includes(w));
   });
@@ -238,7 +238,7 @@ function renderRows() {
         return `<tr>
           <td class="sub">${esc(fmtDateTime(t.transaction_datetime))}</td>
           <td><span class="txn-type ${cls}">${esc(type)}</span></td>
-          <td><span class="t">${esc(itemName(t))}</span><div class="sub">${esc(t.item_sku || "")}${t.lot ? " · lot " + esc(t.lot) : ""}${t.property_owner ? ` · <span class="owner-tag">${esc(ownerName(t.property_owner))}</span>` : ""}</div></td>
+          <td>${(() => { const p = itemParts(t, lib); return `<span class="t">${esc(p.title)}</span>${p.generic ? ` <span class="tag">${esc(p.name)}</span>` : ""}${!p.generic && p.mm ? `<div class="sub">${esc(p.mm)}</div>` : ""}${p.desc ? `<div class="sub">${esc(p.desc.length > 90 ? p.desc.slice(0, 87) + "…" : p.desc)}</div>` : ""}`; })()}<div class="sub">${esc(t.item_sku || "")}${t.lot ? " · lot " + esc(t.lot) : ""}${t.property_owner ? ` · <span class="owner-tag">${esc(ownerName(t.property_owner))}</span>` : ""}</div></td>
           <td class="num">${fmtNum(t.quantity)}<div class="sub">${esc(unitLabel(lib, t.unit_of_measure))}</div></td>
           <td class="mono">${esc(side(t, "from_"))}</td><td class="mono">${esc(side(t, "to_"))}</td>
           <td class="sub">${esc(t.performed_by || "")}${t.shipment_id ? `<div>${esc(t.shipment_id)}</div>` : ""}${t.adjust_reason ? `<div>${esc(t.adjust_reason)}</div>` : ""}</td>
@@ -258,6 +258,9 @@ function exportCsv() {
     { label: "When", get: (t) => (t.transaction_datetime ? new Date(Number(t.transaction_datetime)).toISOString() : "") },
     { label: "Type", key: "transaction_type" },
     { label: "Item", get: (t) => itemName(t) },
+    { label: "Make", get: (t) => itemParts(t, findLib(t.item_sku)).make },
+    { label: "Model", get: (t) => itemParts(t, findLib(t.item_sku)).model },
+    { label: "Description", get: (t) => itemParts(t, findLib(t.item_sku)).desc },
     { label: "Barcode", key: "item_sku" },
     { label: "Quantity", key: "quantity" },
     { label: "Unit", key: "unit_of_measure" },
