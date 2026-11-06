@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// LINC Warehouse — startup.
+// LINC Warehouse — startup. 
 //   1. Sign in with ArcGIS Online (OAuth + PKCE, shared/arcgis-auth.js).
 //   2. Resolve the three data layers; "can add transactions" = warehouse staff.
 //   3. Load balances, transactions, the Barcode Library, and (if it exists) shipment plans.
