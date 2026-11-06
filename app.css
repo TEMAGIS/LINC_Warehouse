@@ -228,3 +228,6 @@
 .loc-detail { flex-basis: 100%; }
 /* Adjust (write-off) transactions */
 .txn-adjust { background: var(--warn-bg, #fff4e0); color: var(--warn, #8a5a00); }
+
+/* Ship tab: plan contents chips; the item being filtered on stands out */
+.tag.tag-focus { background: var(--accent-bg, #e3eefb); color: var(--accent, #1a5fb4); font-weight: 600; }

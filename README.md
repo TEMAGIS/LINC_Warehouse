@@ -44,6 +44,8 @@ It starts with **one lane**. To add lanes, raise `PICKLINE.LANES` in `config.js`
 
 ## Shipment plans
 
+The plan list on the Ship tab shows each plan's **contents** by item name (e.g. *Water 40*, *Cot 10*). The **All items** dropdown beside the status pills filters the list to plans holding that item ("water plans", "cot plans") and totals it across them.
+
 Plans live in a small hosted service the app creates (**Settings → Create the shipments service**, needs a publisher account): `Shipments` (one row per plan), `Shipment_Lines` and `Users`. If the service already exists without Users, **Settings → Add the Users table** adds it (use the account that owns the service). Nothing in a plan changes inventory until you **Ship**. Open plans count as *Promised*, so the same pick-line stock can't be promised twice (**Available = On hand − Promised**).
 
 ## Users and roles

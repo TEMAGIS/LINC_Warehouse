@@ -6,7 +6,7 @@
 import { CONFIG } from "./config.js";
 import { openModal, confirmDialog, toast } from "./shared/ui.js";
 import { $, esc, fmtDate, fmtDateTime } from "./shared/util.js";
-import { S, itemName, itemCell, findLib, normSku } from "./state.js";
+import { S, itemName, itemCell, itemParts, findLib, normSku } from "./state.js";
 import { balanceCode, codeLabel, isPicklineRow, isPicklineCode, picklineLanes } from "./loc.js";
 import { onHand } from "./data.js";
 import { fmtNum, fmtGallons, gallonsFor, unitLabel } from "./units.js";
@@ -31,6 +31,29 @@ const fromLabel = (code) => (isDirect(code) ? "Direct, not from stock" : codeLab
 export const picklineRows = () =>
   S.balances.filter((r) => isPicklineRow(r) && onHand(r) > 0).sort((a, b) => balanceCode(a).localeCompare(balanceCode(b)) || itemName(a).localeCompare(itemName(b)));
 
+/** What a plan holds, grouped by item name ("Water", "Cot"): [{key, name, qty}], biggest first.
+ *  Generic names ("Other") use make / model instead, so they don't all lump together. */
+export function planContents(shipmentId) {
+  const groups = new Map();
+  for (const l of linesOf(shipmentId)) {
+    const p = itemParts(l, findLib(l.item_sku));
+    const name = p.generic ? p.mm : p.name;
+    const key = name.trim().toLowerCase();
+    const g = groups.get(key) || { key, name, qty: 0 };
+    g.qty += Number(l.quantity) || 0;
+    groups.set(key, g);
+  }
+  return [...groups.values()].sort((a, b) => b.qty - a.qty || a.name.localeCompare(b.name));
+}
+
+const contentsCell = (items, focus) => {
+  if (!items.length) return `<span class="sub">No lines yet</span>`;
+  const MAX = 4;
+  const chip = (g) => `<span class="tag${g.key === focus ? " tag-focus" : ""}">${esc(g.name)} <b>${fmtNum(g.qty)}</b></span>`;
+  const list = focus ? [...items.filter((g) => g.key === focus), ...items.filter((g) => g.key !== focus)] : items;
+  return `<span class="tag-row">${list.slice(0, MAX).map(chip).join("")}${list.length > MAX ? `<span class="sub">+${list.length - MAX} more</span>` : ""}</span>`;
+};
+
 const statusClass = (s) => ({ Draft: "st-muted", Ready: "st-pending", Shipped: "st-ok", "Partly shipped": "st-pending", Cancelled: "st-bad" }[s] || "st-muted");
 
 // ---------------------------------------------------------------------------------------------
@@ -47,6 +70,10 @@ export function initPickline() {
     else if (act === "plan-open") openPlan(S.shipments.headers.find((h) => h.shipment_id === b.dataset.id));
     else if (act === "unstage") openMove({ from: b.dataset.code, sku: b.dataset.sku, lot: b.dataset.lot });
     else if (act === "plan-filter") { S.planFilter = b.dataset.f; renderPickline(); }
+    else if (act === "plan-item-clear") { S.planItem = ""; renderPickline(); }
+  });
+  el.addEventListener("change", (e) => {
+    if (e.target.id === "plan-item") { S.planItem = e.target.value; renderPickline(); }
   });
   S.render.pick = renderPickline;
 }
@@ -103,7 +130,15 @@ export function renderPickline() {
   const planned = rows.reduce((n, r) => n + plannedQty(r.item_sku, balanceCode(r), r.lot_number, ownOpt(r)), 0);
   const edit = S.canEdit;
   const filter = S.planFilter || "open";
-  const shown = heads.filter((h) => (filter === "all" ? true : filter === "done" ? !OPEN_STATUSES.includes(h.status) : OPEN_STATUSES.includes(h.status)));
+  const byStatus = heads.filter((h) => (filter === "all" ? true : filter === "done" ? !OPEN_STATUSES.includes(h.status) : OPEN_STATUSES.includes(h.status)));
+  const contents = new Map(byStatus.map((h) => [h.shipment_id, planContents(h.shipment_id)]));
+  // Item filter: every item name in the plans under the current status filter ("Water plans", "Cot plans").
+  const itemNames = new Map();
+  for (const list of contents.values()) for (const g of list) if (!itemNames.has(g.key)) itemNames.set(g.key, g.name);
+  let itemKey = S.planItem || "";
+  if (itemKey && !itemNames.has(itemKey)) itemKey = ""; // that item isn't in any plan here
+  const shown = itemKey ? byStatus.filter((h) => contents.get(h.shipment_id).some((g) => g.key === itemKey)) : byStatus;
+  const itemTotal = itemKey ? shown.reduce((n, h) => n + (contents.get(h.shipment_id).find((g) => g.key === itemKey) || { qty: 0 }).qty, 0) : 0;
 
   const stagedRows = rows.length
     ? rows.map((r) => {
@@ -129,11 +164,11 @@ export function renderPickline() {
         <td class="mono">${esc(h.shipment_id)}</td>
         <td><span class="t">${esc(h.ship_to_name || "")}</span><div class="sub">${esc([h.ship_to_city, h.ship_to_state].filter(Boolean).join(", "))}${h.recipient_name ? " · " + esc(h.recipient_name) : ""}</div></td>
         <td>${esc(h.order_ref || "")}</td>
-        <td class="num">${fmtNum(h.line_count)} lines · ${fmtNum(h.total_qty)}</td>
+        <td>${contentsCell(contents.get(h.shipment_id) || [], itemKey)}<div class="sub">${fmtNum(h.line_count)} lines · ${fmtNum(h.total_qty)} total</div></td>
         <td><span class="status-pill ${statusClass(h.status)}">${esc(h.status || "")}</span></td>
         <td>${esc(fmtDate(h.requested_date))}</td>
         <td class="sub">${esc(h.created_by || "")}</td></tr>`).join("")
-    : `<tr><td colspan="7" class="empty">${S.shipments.ready ? "No shipment plans here." : "The shipments service isn't set up yet."}</td></tr>`;
+    : `<tr><td colspan="7" class="empty">${S.shipments.ready ? (itemKey ? `No plans here contain ${esc(itemNames.get(itemKey) || "that item")}.` : "No shipment plans here.") : "The shipments service isn't set up yet."}</td></tr>`;
 
   el.innerHTML = `
     <div class="tiles">
@@ -154,10 +189,13 @@ export function renderPickline() {
       <h2>Shipment plans</h2>
       <div class="pill-row">${[["open", "Open"], ["done", "Shipped / cancelled"], ["all", "All"]]
         .map(([k, l]) => `<button type="button" class="pill ${filter === k ? "active" : ""}" data-act="plan-filter" data-f="${k}">${l}</button>`).join("")}</div>
+      <select id="plan-item" aria-label="Filter plans by item"><option value="">All items</option>${[...itemNames.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+        .map(([k, n]) => `<option value="${esc(k)}" ${k === itemKey ? "selected" : ""}>${esc(n)}</option>`).join("")}</select>
       <span class="spacer"></span>
       ${edit && S.shipments.ready ? `<button type="button" class="btn-primary" data-act="plan-new">New shipment plan</button>` : ""}
     </div>
-    <div class="table-wrap"><table class="grid"><thead><tr><th>Plan</th><th>Ship to</th><th>Reference</th><th class="num">Contents</th><th>Status</th><th>Requested</th><th>By</th></tr></thead><tbody>${planRows}</tbody></table></div>`;
+    <div class="table-wrap"><table class="grid"><thead><tr><th>Plan</th><th>Ship to</th><th>Reference</th><th>Contents</th><th>Status</th><th>Requested</th><th>By</th></tr></thead><tbody>${planRows}</tbody></table></div>
+    ${itemKey ? `<div class="sub" style="margin:.5rem 0"><b>${esc(itemNames.get(itemKey))}</b>: ${fmtNum(itemTotal)} across ${fmtNum(shown.length)} plan${shown.length === 1 ? "" : "s"}. <button type="button" class="link-btn" data-act="plan-item-clear">Show all items</button></div>` : ""}`;
 }
 
 // ---------------------------------------------------------------------------------------------
