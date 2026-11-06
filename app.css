@@ -126,8 +126,11 @@
 .drawer .card .drawer-actions { margin: 0.7rem 0 0; }
 .dr-total { margin-bottom: 0.5rem; }
 .dr-num { font-size: 1.8rem; font-weight: 700; color: var(--navy, #002868); }
-.dr-btns { white-space: nowrap; text-align: right; }
-.dr-btns button { margin-left: 0.25rem; padding: 0.2rem 0.55rem; font-size: 0.82rem; }
+.dr-btns { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.dr-btns button { padding: 0.2rem 0.55rem; font-size: 0.82rem; }
+.drawer .mini-table tr.has-btns td { border-bottom: 0; padding-bottom: 0.15rem; }
+.drawer .mini-table tr.dr-act td { padding-top: 0.2rem; padding-bottom: 0.6rem; }
+.drawer .body { overflow-x: hidden; }
 .dr-plans { list-style: none; margin: 0.5rem 0 0; padding: 0; }
 .dr-plans li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.3rem 0; border-top: 1px solid #eceff2; }
 .drawer .kv { display: grid; grid-template-columns: 8.5rem 1fr; gap: 0.3rem 0.8rem; margin: 0; }

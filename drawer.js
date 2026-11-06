@@ -87,12 +87,13 @@ function render() {
         const code = balanceCode(r);
         const mine = canActOn(r.property_owner);
         const pl = isPicklineRow(r);
-        return `<tr>
+        const btns = `${edit && mine ? `<button type="button" data-d="move" data-code="${esc(code)}" data-lot="${esc(r.lot_number || "")}">Move</button>${pl ? "" : `<button type="button" data-d="stage">To pick line</button>`}<button type="button" data-d="adjust" data-oid="${esc(r._oid)}" title="Write off: damaged, expired, lost, miscount">Adjust</button>` : ""}${edit && S.isAdmin && ownersActive() ? `<button type="button" data-d="owner" data-oid="${esc(r._oid)}">Owner</button>` : ""}${edit && S.isAdmin ? `<button type="button" class="btn-danger" data-d="delete" data-oid="${esc(r._oid)}" title="Delete test / fake stock">Delete</button>` : ""}`;
+        // Buttons get their own full-width line under the location, so the panel never scrolls sideways.
+        return `<tr class="dr-loc${btns ? " has-btns" : ""}">
           <td>${pl ? `<span class="tag">${esc(codeLabel(code))}</span>` : `<span class="mono">${esc(codeLabel(code))}</span>`}${r.lot_number ? `<div class="sub">lot ${esc(r.lot_number)}</div>` : ""}${ownersActive() && r.property_owner ? `<div class="sub"><span class="owner-tag">${esc(ownerName(r.property_owner))}</span></div>` : ""}</td>
-          <td class="num">${fmtNum(onHand(r))}</td>
-          <td class="dr-btns">${edit && mine ? `<button type="button" data-d="move" data-code="${esc(code)}" data-lot="${esc(r.lot_number || "")}">Move</button>${pl ? "" : `<button type="button" data-d="stage">To pick line</button>`}<button type="button" data-d="adjust" data-oid="${esc(r._oid)}" title="Write off: damaged, expired, lost, miscount">Adjust</button>` : ""}${edit && S.isAdmin && ownersActive() ? `<button type="button" data-d="owner" data-oid="${esc(r._oid)}">Owner</button>` : ""}${edit && S.isAdmin ? `<button type="button" class="btn-danger" data-d="delete" data-oid="${esc(r._oid)}" title="Delete test / fake stock">Delete</button>` : ""}</td></tr>`;
+          <td class="num"><b>${fmtNum(onHand(r))}</b></td></tr>${btns ? `<tr class="dr-act"><td colspan="2"><div class="dr-btns">${btns}</div></td></tr>` : ""}`;
       }).join("")
-    : `<tr><td colspan="3" class="empty">None in stock.</td></tr>`;
+    : `<tr><td colspan="2" class="empty">None in stock.</td></tr>`;
 
   const hist = S.txns.filter((t) => normSku(t.item_sku) === sku).slice(0, 12);
   const histHtml = hist.length
@@ -125,7 +126,7 @@ function render() {
           ${[["where", "Locations", rows.length], ["info", "Details", 0], ["hist", "History", hist.length]].map(([k, l, n]) => `<button type="button" role="tab" class="dr-tab${tab === k ? " active" : ""}" aria-selected="${tab === k}" data-d="tab" data-tab="${k}">${l}${n ? ` <span class="dr-count">${n}</span>` : ""}</button>`).join("")}
         </div>
         ${tab === "where" ? `<div class="card">
-          <table class="mini-table"><thead><tr><th>Where</th><th class="num">Qty</th><th></th></tr></thead><tbody>${onHandRows}</tbody></table>
+          <table class="mini-table"><thead><tr><th>Where</th><th class="num">Qty</th></tr></thead><tbody>${onHandRows}</tbody></table>
         </div>` : ""}
         ${tab === "info" ? `
         <div class="card">
