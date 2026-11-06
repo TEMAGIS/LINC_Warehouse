@@ -11,7 +11,7 @@ import { CONFIG } from "./config.js";
 import { esc } from "./shared/util.js";
 import { openModal, toast } from "./shared/ui.js";
 import { applyEdits } from "./shared/esri-client.js";
-import { S, itemName, findLib, normSku, sameLot } from "./state.js";
+import { S, itemName, itemParts, findLib, normSku, sameLot } from "./state.js";
 import { onHand, loadBalances, loadTransactions } from "./data.js";
 import { balanceCode, codeLabel, cleanScan, pad2, parseCode } from "./loc.js";
 import { submitTransactions, summarizeResults, fitToLayer } from "./txn.js";
@@ -26,7 +26,8 @@ const refresh = () => S.actions.refresh && S.actions.refresh();
 
 const rowSummary = (row) => {
   const lib = findLib(row.item_sku);
-  return `<div><strong>${esc(itemName(row))}</strong><div class="sub">${esc(row.item_sku || "")} · ${esc(codeLabel(balanceCode(row)))}${row.lot_number ? " · lot " + esc(row.lot_number) : ""}${ownersActive() && row.property_owner ? " · " + esc(ownerName(row.property_owner)) : ""} · <b>${fmtNum(onHand(row))}</b> ${esc(unitLabel(lib, row.unit_of_measure))} on hand</div></div>`;
+  const p = itemParts(row, lib);
+  return `<div><strong>${esc(p.title)}</strong>${p.generic ? ` <span class="tag">${esc(p.name)}</span>` : ""}<div class="sub">${esc(row.item_sku || "")} · ${esc(codeLabel(balanceCode(row)))}${row.lot_number ? " · lot " + esc(row.lot_number) : ""}${ownersActive() && row.property_owner ? " · " + esc(ownerName(row.property_owner)) : ""} · <b>${fmtNum(onHand(row))}</b> ${esc(unitLabel(lib, row.unit_of_measure))} on hand</div></div>`;
 };
 
 const promisedFor = (row) => plannedQty(row.item_sku, balanceCode(row), row.lot_number, ownersActive() ? { owner: String(row.property_owner || "") } : {});
@@ -43,9 +44,9 @@ export function openAdjust(row) {
   openModal({
     title: "Adjust stock (write off)",
     body: `${rowSummary(row)}
-      ${badCode ? `<div class="banner banner-warn">This row's location (${esc(code || "blank")}) isn't a valid 8 or 10 character code, so it can't be adjusted with a transaction. An administrator can Delete it instead.</div>` : ""}
-      ${webhook ? `<div class="banner banner-warn">APPLY_MODE is "webhook" and the Lambda doesn't know Adjust transactions. Switch to "browser" in config.js to use this.</div>` : ""}
-      ${promised > 0 ? `<div class="banner banner-warn">${fmtNum(promised)} of this is promised to open shipment plans.</div>` : ""}
+      ${badCode ? `<div class="banner banner-warn"><div>This row's location (${esc(code || "blank")}) isn't a valid 8 or 10 character code, so it can't be adjusted with a transaction. An administrator can Delete it instead.</div></div>` : ""}
+      ${webhook ? `<div class="banner banner-warn"><div>APPLY_MODE is "webhook" and the Lambda doesn't know Adjust transactions. Switch to "browser" in config.js to use this.</div></div>` : ""}
+      ${promised > 0 ? `<div class="banner banner-warn"><div>${fmtNum(promised)} of this is promised to open shipment plans.</div></div>` : ""}
       <label>Quantity to remove *<input id="adj-qty" class="count-input" type="number" min="1" max="${have}" step="1" value="${have}" inputmode="numeric" /></label>
       <label>Reason *<select id="adj-why">${ADJUST_REASONS.map((r) => `<option>${esc(r)}</option>`).join("")}</select></label>
       <label>Details<input id="adj-note" maxlength="200" placeholder="e.g. Pallet crushed by forklift; 3 cases leaking" /></label>
@@ -121,10 +122,13 @@ export function openDeleteStock(row) {
   openModal({
     title: "Delete stock row",
     body: `${rowSummary(row)}
-      <div class="banner banner-warn">For stock that was never really there (a test, or entered by mistake). The row is <b>deleted</b> from Inventory Balance and isn't recorded as a transaction. For real stock that's damaged, lost or miscounted, use <b>Adjust</b> instead so there's a record.</div>
-      ${promised > 0 ? `<div class="banner banner-warn">${fmtNum(promised)} of this is promised to open shipment plans. Remove it from those plans too.</div>` : ""}
+      <div class="banner banner-warn"><div>
+        <div><b>Only for stock that was never really there</b> (a test, or entered by mistake).</div>
+        <div style="margin-top:.35rem">This removes the row from Inventory Balance with no transaction record. For real stock that's damaged, lost or miscounted, use <b>Adjust</b> instead.</div>
+      </div></div>
+      ${promised > 0 ? `<div class="banner banner-warn"><div>${fmtNum(promised)} of this is promised to open shipment plans. Remove it from those plans too.</div></div>` : ""}
       <label>Reason *<input id="del-why" maxlength="200" placeholder="e.g. Test receive while setting up the app" /></label>
-      ${txns.length ? `<label class="check"><input type="checkbox" id="del-void" checked /> Also mark the ${txns.length} transaction${txns.length === 1 ? "" : "s"} that touched it as <b>Voided</b> (they drop out of totals)</label>
+      ${txns.length ? `<label class="check"><input type="checkbox" id="del-void" checked /> <span>Also mark the ${txns.length} transaction${txns.length === 1 ? "" : "s"} that touched it as <b>Voided</b> (they drop out of totals)</span></label>
         <ul class="sub">${list}${txns.length > 8 ? `<li>…and ${txns.length - 8} more</li>` : ""}</ul>
         ${moved ? `<p class="hint">Some of this was moved to another shelf. Voiding the Move doesn't change that other shelf; delete or adjust it there too.</p>` : ""}` : `<p class="hint">No applied transactions for it in the loaded history.</p>`}`,
     buttons: [{ label: "Cancel" }, { label: "Delete", kind: "danger", action: async (m) => {
